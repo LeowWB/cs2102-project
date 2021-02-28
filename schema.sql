@@ -66,7 +66,7 @@ create table Part_time_Emp
         check ( salary_type == 'part_time' ),
     job_type    varchar(20) not null
         check (job_type == 'part_time_instructor'),
-    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type) on delete cascade
 );
 
 create table Full_time_Emp
@@ -77,7 +77,7 @@ create table Full_time_Emp
         check ( salary_type == 'full_time' ),
     job_type        varchar(20) not null
         check (job_type in ('administrator', 'manager', 'full_time_instructor'),
-    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type) on delete cascade
 );
 
 create table Instructors
@@ -87,7 +87,7 @@ create table Instructors
     job_type varchar(20) not null,
         check ( job_type in ('full_time_instructor', 'part_time_instructor')),
     primary key (eid),
-    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type) on delete cascade
 );
 
 create table Administrators
@@ -98,7 +98,7 @@ create table Administrators
     job_type varchar(20) not null default 'administrator'
         check ( job_type == 'administrator' ),
     primary key (eid),
-    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type) on delete cascade
 );
 
 create table Managers
@@ -109,7 +109,7 @@ create table Managers
     job_type varchar(20) not null default 'manager'
         check ( job_type == 'manager' ),
     primary key (eid),
-    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type) on delete cascade
 );
 
 create table Part_time_instructor
@@ -120,8 +120,8 @@ create table Part_time_instructor
     job_type varchar(20) not null default 'part_time_instructor'
         check ( job_type == 'part_time_instructor' ),
     primary key (eid),
-    foreign key (eid, salary_type, job_type) references Part_time_Emp (eid, salary_type, job_type),
-    foreign key (eid, salary_type, job_type) references Instructors (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Part_time_Emp (eid, salary_type, job_type) on delete cascade,
+    foreign key (eid, salary_type, job_type) references Instructors (eid, salary_type, job_type) on delete cascade
 );
 
 create table Full_time_instructor
@@ -132,8 +132,8 @@ create table Full_time_instructor
     job_type varchar(20) not null default 'full_time_instructor'
         check ( job_type == 'full_time_instructor' ),
     primary key (eid),
-    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type),
-    foreign key (eid, salary_type, job_type) references Instructors (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type) on delete cascade,
+    foreign key (eid, salary_type, job_type) references Instructors (eid, salary_type, job_type) on delete cascade
 );
 
 create table Course_areas
