@@ -4,7 +4,11 @@ create table Credit_cards
 (
     number      varchar(20) primary key,
     cvv         varchar(10),
-    expiry_date date
+    cust_id     integer,
+    from_date   date,
+    expiry_date date,
+    check (expiry_date > from_date),
+    foreign key (cust_id) references Customers(cust_id)
 );
 
 create table Customers
@@ -15,6 +19,56 @@ create table Customers
     name    text,
     email   text
 );
+
+-- no need cust_id; if we know the credit card number then we know the customer
+create table Buys
+(
+    date        date,
+    package_id  integer references Course_packages(pakcage_id),
+    number      integer references Credit_cards (number),
+    num_remaining_redemptions integer,
+    primary key (date, package_id, number)
+)
+
+create table Registers
+(
+    date        date,
+    number      number,
+    sid         integer,
+    course_id   integer,
+    launch_date date,
+    primary key (date, number, sid, course_id, launch_date),
+    foreign key (number) references Credit_cards(number),
+    foreign key (sid, course_id, launch_date) references Sessions(sid, course_id, launch_date)
+)
+
+create table Redeems
+(
+    buys_date   date,
+    package_id  integer,
+    number      number,
+    date        date,
+    sid         integer,
+    course_id   integer,
+    launch_date date,
+    primary key (buys_date, package_id, number, date, sid, course_id, launch_date),
+    foreign key (buys_date, package_id, number) references Buys(date, package_id, number),
+    foreign key (sid, course_id, launch_date) references Sessions(sid, course_id, launch_date)
+)
+
+create table Cancels
+(
+    cust_id         integer,
+    date            date,
+    sid             integer,
+    launch_date     date,
+    course_id       integer,
+    refund_amt      integer,
+    package_credit  integer,
+    primary key (cust_id, date, sid, launch_date, course_id),
+    foreign key (cust_id) references Customers(cust_id),
+    foreign key (sid, launch_date, course_id) references Sessions (sid, launch_date, course_id)
+)
 
 create table Rooms
 (
@@ -141,6 +195,13 @@ create table Course_areas
     name    text primary key,
     manager integer references Managers (eid)
 );
+
+create table Specializes
+(
+    eid     integer references Instructors(eid),
+    name    text references Course_areas(name),
+    primary key (eid, name)
+)
 
 create table Courses
 (
