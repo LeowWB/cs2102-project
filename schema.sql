@@ -60,22 +60,22 @@ create table Part_time_Emp
 (
     eid         integer primary key,
     hourly_rate float,
-    type        char(8) not null default 'part_time'
-        check ( type == 'part_time' ),
+    salary_type char(8) not null default 'part_time'
+        check ( salary_type == 'part_time' ),
     job_type    varchar(20) not null
         check (job_type == 'part_time_instructor'),
-    foreign key (eid, type, job_type) references Employees (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
 );
 
 create table Full_time_Emp
 (
     eid            integer primary key,
     monthly_salary float,
-    type           char(8) not null default 'full_time'
-        check ( type == 'full_time' ),
+    salary_type    char(8) not null default 'full_time'
+        check ( salary_type == 'full_time' ),
     job_type        varchar(20) not null
         check (job_type in ('administrator', 'manager', 'full_time_instructor'),
-    foreign key (eid, type, job_type) references Employees (eid, salary_type, job_type)
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
 );
 
 create table Instructors
@@ -94,7 +94,7 @@ create table Administrators
     salary_type char(8) not null default 'full_time'
         check (salary_type == 'full_time'),
     job_type varchar(10) not null default 'administrator'
-        check ( type == 'administrator' ),
+        check ( job_type == 'administrator' ),
     primary key (eid),
     foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
 );
@@ -105,7 +105,7 @@ create table Managers
     salary_type char(8) not null default 'full_time'
         check (salary_type == 'full_time'),
     job_type varchar(10) not null default 'manager'
-        check ( type == 'manager' ),
+        check ( job_type == 'manager' ),
     primary key (eid),
     foreign key (eid, job_type, salary_type) references Employees (eid, job_type, salary_type)
 );
