@@ -45,8 +45,8 @@ create table Employees
     eid         integer primary key,
     salary_type char(8)     not null
         check ( salary_type in ('full_time', 'part_time') ),
-    job_type    varchar(10) not null
-        check (job_type in ('administrator', 'manager', 'instructor')),
+    job_type    varchar(20) not null
+        check (job_type in ('administrator', 'manager', 'full_time_instructor', 'part_time_instructor')),
     name        text,
     phone       varchar(20),
     address     text,
@@ -62,7 +62,9 @@ create table Part_time_Emp
     hourly_rate float,
     type        char(8) not null default 'part_time'
         check ( type == 'part_time' ),
-    foreign key (eid, type) references Employees (eid, salary_type)
+    job_type    varchar(20) not null
+        check (job_type == 'part_time_instructor'),
+    foreign key (eid, type, job_type) references Employees (eid, salary_type, job_type)
 );
 
 create table Full_time_Emp
@@ -71,34 +73,41 @@ create table Full_time_Emp
     monthly_salary float,
     type           char(8) not null default 'full_time'
         check ( type == 'full_time' ),
-    foreign key (eid, type) references Employees (eid, salary_type)
+    job_type        varchar(20) not null
+        check (job_type in ('administrator', 'manager', 'full_time_instructor'),
+    foreign key (eid, type, job_type) references Employees (eid, salary_type, job_type)
 );
 
 create table Instructors
 (
     eid  integer references Employees (eid),
-    type varchar(10) not null default 'instructor'
-        check ( type == 'instructor' ),
+    salary_type char(8) not null,
+    job_type varchar(10) not null,
+        check ( job_type in ('full_time_instructor', 'part_time_instructor')),
     primary key (eid),
-    foreign key (eid, type) references Employees (eid, job_type)
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
 );
 
 create table Administrators
 (
     eid  integer references Employees (eid),
-    type varchar(10) not null default 'administrator'
+    salary_type char(8) not null default 'full_time'
+        check (salary_type == 'full_time'),
+    job_type varchar(10) not null default 'administrator'
         check ( type == 'administrator' ),
     primary key (eid),
-    foreign key (eid, type) references Employees (eid, job_type)
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
 );
 
 create table Managers
 (
     eid  integer references Employees (eid),
-    type varchar(10) not null default 'manager'
+    salary_type char(8) not null default 'full_time'
+        check (salary_type == 'full_time'),
+    job_type varchar(10) not null default 'manager'
         check ( type == 'manager' ),
     primary key (eid),
-    foreign key (eid, type) references Employees (eid, job_type)
+    foreign key (eid, job_type, salary_type) references Employees (eid, job_type, salary_type)
 );
 
 create table Course_areas
