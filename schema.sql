@@ -109,7 +109,29 @@ create table Managers
     job_type varchar(10) not null default 'manager'
         check ( job_type == 'manager' ),
     primary key (eid),
-    foreign key (eid, job_type, salary_type) references Employees (eid, job_type, salary_type)
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
+);
+
+create table Part_time_instructor
+(
+    eid  integer references Employees (eid),
+    salary_type char(9) not null default 'part_time'
+        check (salary_type == 'part_time'),
+    job_type varchar(10) not null default 'part_time_instructor'
+        check ( job_type == 'part_time_instructor' ),
+    primary key (eid),
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
+);
+
+create table Full_time_instructor
+(
+    eid  integer references Employees (eid),
+    salary_type char(9) not null default 'full_time'
+        check (salary_type == 'full_time'),
+    job_type varchar(10) not null default 'full_time_instructor'
+        check ( job_type == 'full_time_instructor' ),
+    primary key (eid),
+    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
 );
 
 create table Course_areas
