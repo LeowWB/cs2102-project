@@ -1,3 +1,5 @@
+-- all monetary values are stored as int (number of cents) to avoid recurring decimals
+
 create table Credit_cards
 (
     number      varchar(20) primary key,
@@ -59,7 +61,7 @@ create table Employees
 create table Part_time_Emp
 (
     eid         integer primary key,
-    hourly_rate float,
+    hourly_rate int,
     salary_type char(9) not null default 'part_time'
         check ( salary_type == 'part_time' ),
     job_type    varchar(20) not null
@@ -70,7 +72,7 @@ create table Part_time_Emp
 create table Full_time_Emp
 (
     eid            integer primary key,
-    monthly_salary float,
+    monthly_salary int,
     salary_type    char(9) not null default 'full_time'
         check ( salary_type == 'full_time' ),
     job_type        varchar(20) not null
@@ -129,7 +131,7 @@ create table Offerings
 (
     course_id                   integer references Courses (course_id),
     launch_date                 date,
-    fees                        float,
+    fees                        int,
     target_number_registrations integer,
     registration_deadline       date,
     handler                     integer references Administrators (eid),
