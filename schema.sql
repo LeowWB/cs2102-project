@@ -1,8 +1,9 @@
 -- all monetary values are stored as int (number of cents) to avoid recurring decimals
 
+-- some credit cards have 19-digit numbers
 create table Credit_cards
 (
-    number      char(16) primary key,
+    number      varchar(19) primary key,
     cvv         char(3),
     cust_id     integer,
     from_date   date,
@@ -25,7 +26,7 @@ create table Buys
 (
     date        date,
     package_id  integer references Course_packages(pakcage_id),
-    number      char(16) references Credit_cards (number),
+    number      varchar(19) references Credit_cards (number),
     num_remaining_redemptions integer,
     primary key (date, package_id, number)
 )
@@ -33,7 +34,7 @@ create table Buys
 create table Registers
 (
     date        date,
-    number      char(16),
+    number      varchar(19),
     sid         integer,
     course_id   integer,
     launch_date date,
@@ -46,7 +47,7 @@ create table Redeems
 (
     buys_date   date,
     package_id  integer,
-    number      char(16),
+    number      varchar(19),
     date        date,
     sid         integer,
     course_id   integer,
