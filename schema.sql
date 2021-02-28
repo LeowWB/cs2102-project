@@ -43,7 +43,7 @@ create table Course_packages
 create table Employees
 (
     eid         integer primary key,
-    salary_type char(8)     not null
+    salary_type char(9)     not null
         check ( salary_type in ('full_time', 'part_time') ),
     job_type    varchar(20) not null
         check (job_type in ('administrator', 'manager', 'full_time_instructor', 'part_time_instructor')),
@@ -60,7 +60,7 @@ create table Part_time_Emp
 (
     eid         integer primary key,
     hourly_rate float,
-    salary_type char(8) not null default 'part_time'
+    salary_type char(9) not null default 'part_time'
         check ( salary_type == 'part_time' ),
     job_type    varchar(20) not null
         check (job_type == 'part_time_instructor'),
@@ -71,7 +71,7 @@ create table Full_time_Emp
 (
     eid            integer primary key,
     monthly_salary float,
-    salary_type    char(8) not null default 'full_time'
+    salary_type    char(9) not null default 'full_time'
         check ( salary_type == 'full_time' ),
     job_type        varchar(20) not null
         check (job_type in ('administrator', 'manager', 'full_time_instructor'),
@@ -81,7 +81,7 @@ create table Full_time_Emp
 create table Instructors
 (
     eid  integer references Employees (eid),
-    salary_type char(8) not null,
+    salary_type char(9) not null,
     job_type varchar(10) not null,
         check ( job_type in ('full_time_instructor', 'part_time_instructor')),
     primary key (eid),
@@ -91,7 +91,7 @@ create table Instructors
 create table Administrators
 (
     eid  integer references Employees (eid),
-    salary_type char(8) not null default 'full_time'
+    salary_type char(9) not null default 'full_time'
         check (salary_type == 'full_time'),
     job_type varchar(10) not null default 'administrator'
         check ( job_type == 'administrator' ),
@@ -102,7 +102,7 @@ create table Administrators
 create table Managers
 (
     eid  integer references Employees (eid),
-    salary_type char(8) not null default 'full_time'
+    salary_type char(9) not null default 'full_time'
         check (salary_type == 'full_time'),
     job_type varchar(10) not null default 'manager'
         check ( job_type == 'manager' ),
