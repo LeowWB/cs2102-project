@@ -143,3 +143,14 @@ create table Sessions
     foreign key (course_id, launch_date) references Offerings (course_id, launch_date),
     primary key (sid, course_id, launch_date)
 );
+
+create table Pay_slips (
+    payment_date    date,
+    amount          integer, --store in cents
+    num_work_hours  integer,
+    num_work_days   integer,
+    eid             integer,
+    primary key (payment_date, eid),
+    foreign key (eid) references Employees(eid),
+    check ((amount >= 0) and (num_work_hours >= 0) and (num_work_days >= 0))
+)
