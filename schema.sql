@@ -79,6 +79,7 @@ create table Instructors
     eid  integer references Employees (eid),
     type varchar(10) not null default 'instructor'
         check ( type == 'instructor' ),
+    primary key (eid),
     foreign key (eid, type) references Employees (eid, job_type)
 );
 
@@ -87,6 +88,7 @@ create table Administrators
     eid  integer references Employees (eid),
     type varchar(10) not null default 'administrator'
         check ( type == 'administrator' ),
+    primary key (eid),
     foreign key (eid, type) references Employees (eid, job_type)
 );
 
@@ -95,6 +97,7 @@ create table Managers
     eid  integer references Employees (eid),
     type varchar(10) not null default 'manager'
         check ( type == 'manager' ),
+    primary key (eid),
     foreign key (eid, type) references Employees (eid, job_type)
 );
 
