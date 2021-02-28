@@ -84,7 +84,7 @@ create table Instructors
 (
     eid  integer references Employees (eid),
     salary_type char(9) not null,
-    job_type varchar(10) not null,
+    job_type varchar(20) not null,
         check ( job_type in ('full_time_instructor', 'part_time_instructor')),
     primary key (eid),
     foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
@@ -95,7 +95,7 @@ create table Administrators
     eid  integer references Employees (eid),
     salary_type char(9) not null default 'full_time'
         check (salary_type == 'full_time'),
-    job_type varchar(10) not null default 'administrator'
+    job_type varchar(20) not null default 'administrator'
         check ( job_type == 'administrator' ),
     primary key (eid),
     foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
@@ -106,7 +106,7 @@ create table Managers
     eid  integer references Employees (eid),
     salary_type char(9) not null default 'full_time'
         check (salary_type == 'full_time'),
-    job_type varchar(10) not null default 'manager'
+    job_type varchar(20) not null default 'manager'
         check ( job_type == 'manager' ),
     primary key (eid),
     foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
@@ -117,7 +117,7 @@ create table Part_time_instructor
     eid  integer references Employees (eid),
     salary_type char(9) not null default 'part_time'
         check (salary_type == 'part_time'),
-    job_type varchar(10) not null default 'part_time_instructor'
+    job_type varchar(20) not null default 'part_time_instructor'
         check ( job_type == 'part_time_instructor' ),
     primary key (eid),
     foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
@@ -128,7 +128,7 @@ create table Full_time_instructor
     eid  integer references Employees (eid),
     salary_type char(9) not null default 'full_time'
         check (salary_type == 'full_time'),
-    job_type varchar(10) not null default 'full_time_instructor'
+    job_type varchar(20) not null default 'full_time_instructor'
         check ( job_type == 'full_time_instructor' ),
     primary key (eid),
     foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type)
