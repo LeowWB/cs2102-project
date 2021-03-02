@@ -4,7 +4,7 @@
 create table Credit_cards
 (
     number      varchar(19) primary key,
-    cvv         char(3),
+    cvv         varchar(4),
     cust_id     integer,
     from_date   date,
     expiry_date date,
@@ -25,11 +25,11 @@ create table Customers
 create table Buys
 (
     date        date,
-    package_id  integer references Course_packages(pakcage_id),
+    package_id  integer references Course_packages(package_id),
     number      varchar(19) references Credit_cards (number),
     num_remaining_redemptions integer,
     primary key (date, package_id, number)
-)
+);
 
 create table Registers
 (
@@ -41,7 +41,7 @@ create table Registers
     primary key (date, number, sid, course_id, launch_date),
     foreign key (number) references Credit_cards(number),
     foreign key (sid, course_id, launch_date) references Sessions(sid, course_id, launch_date)
-)
+);
 
 create table Redeems
 (
@@ -55,7 +55,7 @@ create table Redeems
     primary key (buys_date, package_id, number, date, sid, course_id, launch_date),
     foreign key (buys_date, package_id, number) references Buys(date, package_id, number),
     foreign key (sid, course_id, launch_date) references Sessions(sid, course_id, launch_date)
-)
+);
 
 create table Cancels
 (
@@ -69,7 +69,7 @@ create table Cancels
     primary key (cust_id, date, sid, launch_date, course_id),
     foreign key (cust_id) references Customers(cust_id),
     foreign key (sid, launch_date, course_id) references Sessions (sid, launch_date, course_id)
-)
+);
 
 create table Rooms
 (
@@ -131,7 +131,7 @@ create table Full_time_Emp
     salary_type    char(9) not null default 'full_time'
         check ( salary_type == 'full_time' ),
     job_type        varchar(20) not null
-        check (job_type in ('administrator', 'manager', 'full_time_instructor'),
+        check (job_type in ('administrator', 'manager', 'full_time_instructor')),
     foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type) on delete cascade
 );
 
@@ -202,7 +202,7 @@ create table Specializes
     eid     integer references Instructors(eid),
     name    text references Course_areas(name),
     primary key (eid, name)
-)
+);
 
 create table Courses
 (
@@ -253,4 +253,4 @@ create table Pay_slips (
     primary key (payment_date, eid),
     foreign key (eid) references Employees(eid),
     check ((amount >= 0) and (num_work_hours >= 0) and (num_work_days >= 0))
-)
+);
