@@ -9,7 +9,7 @@ create table Credit_cards
     from_date   date,
     expiry_date date,
     check (expiry_date > from_date),
-    foreign key (cust_id) references Customers(cust_id)
+    foreign key (cust_id) references Customers (cust_id)
 );
 
 create table Customers
@@ -24,9 +24,9 @@ create table Customers
 -- no need cust_id; if we know the credit card number then we know the customer
 create table Buys
 (
-    date        date,
-    package_id  integer references Course_packages(package_id),
-    number      varchar(19) references Credit_cards (number),
+    date                      date,
+    package_id                integer references Course_packages (package_id),
+    number                    varchar(19) references Credit_cards (number),
     num_remaining_redemptions integer,
     primary key (date, package_id, number)
 );
@@ -39,8 +39,8 @@ create table Registers
     course_id   integer,
     launch_date date,
     primary key (date, number, sid, course_id, launch_date),
-    foreign key (number) references Credit_cards(number),
-    foreign key (sid, course_id, launch_date) references Sessions(sid, course_id, launch_date)
+    foreign key (number) references Credit_cards (number),
+    foreign key (sid, course_id, launch_date) references Sessions (sid, course_id, launch_date)
 );
 
 create table Redeems
@@ -53,21 +53,21 @@ create table Redeems
     course_id   integer,
     launch_date date,
     primary key (buys_date, package_id, number, date, sid, course_id, launch_date),
-    foreign key (buys_date, package_id, number) references Buys(date, package_id, number),
-    foreign key (sid, course_id, launch_date) references Sessions(sid, course_id, launch_date)
+    foreign key (buys_date, package_id, number) references Buys (date, package_id, number),
+    foreign key (sid, course_id, launch_date) references Sessions (sid, course_id, launch_date)
 );
 
 create table Cancels
 (
-    cust_id         integer,
-    date            date,
-    sid             integer,
-    launch_date     date,
-    course_id       integer,
-    refund_amt      integer,
-    package_credit  integer,
+    cust_id        integer,
+    date           date,
+    sid            integer,
+    launch_date    date,
+    course_id      integer,
+    refund_amt     integer,
+    package_credit integer,
     primary key (cust_id, date, sid, launch_date, course_id),
-    foreign key (cust_id) references Customers(cust_id),
+    foreign key (cust_id) references Customers (cust_id),
     foreign key (sid, launch_date, course_id) references Sessions (sid, launch_date, course_id)
 );
 
@@ -119,9 +119,7 @@ create table Part_time_Emp
     hourly_rate int,
     salary_type char(9) not null default 'part_time'
         check ( salary_type == 'part_time' ),
-    job_type    varchar(20) not null
-        check (job_type == 'part_time_instructor'),
-    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type) on delete cascade
+    foreign key (eid, salary_type) references Employees (eid, salary_type) on delete cascade
 );
 
 create table Full_time_Emp
@@ -130,65 +128,48 @@ create table Full_time_Emp
     monthly_salary int,
     salary_type    char(9) not null default 'full_time'
         check ( salary_type == 'full_time' ),
-    job_type        varchar(20) not null
-        check (job_type in ('administrator', 'manager', 'full_time_instructor')),
-    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type) on delete cascade
+    foreign key (eid, salary_type) references Employees (eid, salary_type) on delete cascade
 );
 
 create table Instructors
 (
-    eid  integer,
-    salary_type char(9) not null,
+    eid      integer,
     job_type varchar(20) not null,
-        check ( job_type in ('full_time_instructor', 'part_time_instructor')),
+    check ( job_type in ('full_time_instructor', 'part_time_instructor')),
     primary key (eid),
-    foreign key (eid, salary_type, job_type) references Employees (eid, salary_type, job_type) on delete cascade
+    foreign key (eid, job_type) references Employees (eid, job_type) on delete cascade
 );
 
 create table Administrators
 (
-    eid  integer,
-    salary_type char(9) not null default 'full_time'
-        check (salary_type == 'full_time'),
+    eid      integer references Full_time_Emp (eid) primary key,
     job_type varchar(20) not null default 'administrator'
         check ( job_type == 'administrator' ),
-    primary key (eid),
-    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type) on delete cascade
+    foreign key (eid, job_type) references Employees (eid, job_type) on delete cascade
 );
 
 create table Managers
 (
-    eid  integer,
-    salary_type char(9) not null default 'full_time'
-        check (salary_type == 'full_time'),
+    eid      integer references Full_time_Emp (eid) primary key,
     job_type varchar(20) not null default 'manager'
         check ( job_type == 'manager' ),
-    primary key (eid),
-    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type) on delete cascade
+    foreign key (eid, job_type) references Employees (eid, job_type) on delete cascade
 );
 
 create table Part_time_instructor
 (
-    eid  integer,
-    salary_type char(9) not null default 'part_time'
-        check (salary_type == 'part_time'),
+    eid      integer references Part_time_Emp (eid) primary key,
     job_type varchar(20) not null default 'part_time_instructor'
         check ( job_type == 'part_time_instructor' ),
-    primary key (eid),
-    foreign key (eid, salary_type, job_type) references Part_time_Emp (eid, salary_type, job_type) on delete cascade,
-    foreign key (eid, salary_type, job_type) references Instructors (eid, salary_type, job_type) on delete cascade
+    foreign key (eid, job_type) references Instructors (eid, job_type) on delete cascade
 );
 
 create table Full_time_instructor
 (
-    eid  integer,
-    salary_type char(9) not null default 'full_time'
-        check (salary_type == 'full_time'),
+    eid      integer references Full_time_Emp (eid) primary key,
     job_type varchar(20) not null default 'full_time_instructor'
         check ( job_type == 'full_time_instructor' ),
-    primary key (eid),
-    foreign key (eid, salary_type, job_type) references Full_time_Emp (eid, salary_type, job_type) on delete cascade,
-    foreign key (eid, salary_type, job_type) references Instructors (eid, salary_type, job_type) on delete cascade
+    foreign key (eid, job_type) references Instructors (eid, job_type) on delete cascade
 );
 
 create table Course_areas
@@ -199,8 +180,8 @@ create table Course_areas
 
 create table Specializes
 (
-    eid     integer references Instructors(eid),
-    name    text references Course_areas(name),
+    eid  integer references Instructors (eid),
+    name text references Course_areas (name),
     primary key (eid, name)
 );
 
@@ -244,13 +225,14 @@ create table Sessions
     primary key (sid, course_id, launch_date)
 );
 
-create table Pay_slips (
-    payment_date    date,
-    amount          integer, --store in cents
-    num_work_hours  integer,
-    num_work_days   integer,
-    eid             integer,
+create table Pay_slips
+(
+    payment_date   date,
+    amount         integer, --store in cents
+    num_work_hours integer,
+    num_work_days  integer,
+    eid            integer,
     primary key (payment_date, eid),
-    foreign key (eid) references Employees(eid),
+    foreign key (eid) references Employees (eid),
     check ((amount >= 0) and (num_work_hours >= 0) and (num_work_days >= 0))
 );
