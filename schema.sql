@@ -118,7 +118,7 @@ create table Managers
     foreign key (eid, job_type) references Employees (eid, job_type) on delete cascade
 );
 
-create table Part_time_instructor
+create table Part_time_instructors
 (
     eid      integer references Part_time_Emp (eid) primary key,
     job_type varchar(20) not null default 'part_time_instructor'
@@ -126,7 +126,7 @@ create table Part_time_instructor
     foreign key (eid, job_type) references Instructors (eid, job_type) on delete cascade
 );
 
-create table Full_time_instructor
+create table Full_time_instructors
 (
     eid      integer references Full_time_Emp (eid) primary key,
     job_type varchar(20) not null default 'full_time_instructor'
