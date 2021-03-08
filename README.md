@@ -1,14 +1,7 @@
 pls remember to push and pull
 
--- Assumptions
+-- Assumptions (can write in report)
 
-according to 2) Application
-session info only need day of week and hour of day
+procedure 24 (`add_session`) asks for a session start hour, but does not ask for a duration or a end time. as such we assume all sessions last exactly 1h (duration === 1).
 
-but later on,
-
-proc 8 says session needs date and duration
-proc 10 says session needs date (and no duration)
-
-so we assume duration always === 1 and so only need to store the start hour
-and we cannot just store day of week, so we store the full date.
+although 2) Application says that a session only needs a day (and not a date), procedure 10 (`add_course_offering`) asks for a session date. thus we store the full date for each session, and derive the day
