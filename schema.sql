@@ -171,6 +171,9 @@ create table Offerings
     primary key (course_id, launch_date)
 );
 
+-- assume all sessions last exactly one hour.
+-- rationale: when we create a new session, we do not need to specify duration or end time (see
+-- functionality 24 in the specs). therefore we assume duration is constant.
 create table Sessions
 (
     sid         integer,
@@ -178,10 +181,9 @@ create table Sessions
     launch_date date,
     -- seating capacity is derived from room
     instructor  integer references Instructors (eid),
-    day         varchar(10)
-        check ( day in ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday') ),
-    hour        integer
-        check (hour >= 9 and hour < 12 and hour >= 14 and hour < 18),
+    date        date,
+    start_time  integer
+        check ((start_time >= 9 and start_time < 12) or (start_time >= 14 and start_time < 18)),
     room        integer references Rooms (rid),
     foreign key (course_id, launch_date) references Offerings (course_id, launch_date),
     primary key (sid, course_id, launch_date)
