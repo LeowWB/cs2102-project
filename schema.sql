@@ -181,7 +181,7 @@ create table Sessions
     day         varchar(10)
         check ( day in ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday') ),
     hour        integer
-        check (hour >= 9 and hour <= 18),
+        check (hour >= 9 and hour < 12 and hour >= 14 and hour < 18),
     room        integer references Rooms (rid),
     foreign key (course_id, launch_date) references Offerings (course_id, launch_date),
     primary key (sid, course_id, launch_date)
