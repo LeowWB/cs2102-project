@@ -287,3 +287,23 @@ returns trigger as $$
         end if;
     end;
 $$ language plpgsql;
+
+--each session is on a specific weekday (Monday to Friday)
+
+create trigger sessions_on_weekdays_t
+before insert or update on Sessions
+deferrable initially deferred
+for each row execute function sessions_on_weekdays_f();
+
+create or replace function sessions_on_weekdays_f()
+returns trigger as $$
+    declare
+        dow integer;
+    begin
+        select extract(dow from timestamp NEW.date) into dow;
+        if dow < 1 or dow > 5 then
+            raise notice 'Each session is on a specific weekday';
+            return null;
+        end if;
+    end;
+$$ language plpgsql;
