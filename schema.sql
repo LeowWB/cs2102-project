@@ -180,7 +180,7 @@ create table Sessions
     course_id   integer,
     launch_date date,
     -- seating capacity is derived from room
-    instructor  integer references Instructors (eid),
+    instructor  integer references Instructors (eid) not null,
     date        date,
     start_time  integer
         check ((start_time >= 9 and start_time < 12) or (start_time >= 14 and start_time < 18)),
