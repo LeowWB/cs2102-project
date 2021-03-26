@@ -163,7 +163,7 @@ create table Offerings
     fees                        int,
     target_number_registrations integer,
     registration_deadline       date,
-    handler                     integer references Administrators (eid),
+    handler                     integer references Administrators (eid) not null,
     -- seating capacity is derived from sessions
     -- check target_n_r < seating capacity
     -- start and end date is derived
