@@ -150,7 +150,7 @@ create table Specializes
 create table Courses
 (
     course_id   serial primary key,
-    title       text,
+    title       text unique,
     description text,
     duration    integer,
     area        text references Course_areas (name)
