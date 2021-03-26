@@ -307,3 +307,52 @@ returns trigger as $$
         end if;
     end;
 $$ language plpgsql;
+
+
+--The registration deadline for a course offering must be at least 10 days before its start date.
+
+create trigger registration_ten_days_before_t1
+before insert or update on Offerings
+deferrable initially deferred
+for each row execute function registration_ten_days_before_f1();
+
+create trigger registration_ten_days_before_t2
+before insert on Sessions
+deferrable initially deferred
+for each row execute function registration_ten_days_before_f2();
+
+create or replace function registration_ten_days_before_f1()
+returns trigger as $$
+    declare
+        start_date date;
+    begin
+        select min(date) into start_date
+        from Sessions
+        where course_id = NEW.course_id and launch_date = NEW.launch_date;
+        if start_date - 10 < NEW.registration_deadline then
+            raise notice 'The registration deadline for a course offering must be at least 10 days before its start date.'
+            return NULL;
+        end if;
+    end;
+$$ language plpgsql;
+
+create or replace function registration_ten_days_before_f2()
+returns trigger as $$
+    declare
+        start_date date;
+        reg_deadline date;
+    begin
+        select min(date) into start_date
+        from Sessions
+        where course_id = NEW.course_id and launch_date = NEW.launch_date;
+
+        select registration_deadline into reg_deadline
+        from Offerings
+        where course_id = NEW.course_id and launch_date = NEW.launch_date;
+
+        if start_date - 10 < reg_deadline then
+            raise notice 'The registration deadline for a course offering must be at least 10 days before its start date.'
+            return NULL;
+        end if;
+    end;
+$$ language plpgsql;
