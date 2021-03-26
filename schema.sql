@@ -184,7 +184,7 @@ create table Sessions
     date        date,
     start_time  integer
         check ((start_time >= 9 and start_time < 12) or (start_time >= 14 and start_time < 18)),
-    room        integer references Rooms (rid),
+    room        integer references Rooms (rid) not null,
     foreign key (course_id, launch_date) references Offerings (course_id, launch_date),
     primary key (sid, course_id, launch_date)
 );
