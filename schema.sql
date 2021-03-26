@@ -242,3 +242,48 @@ create table Pay_slips
     foreign key (eid) references Employees (eid),
     check ((amount >= 0) and (num_work_hours >= 0) and (num_work_days >= 0))
 );
+
+
+-- TRIGGERS ----------------------------------------------------------------------------------------
+
+-- Each course offering consists of one or more sessions
+
+create constraint trigger each_offering_at_least_one_session_t1
+before insert on Offerings
+deferrable initially deferred
+for each row execute function each_offering_at_least_one_session_f1();
+
+create trigger each_offering_at_least_one_session_t2
+before delete on Sessions
+deferrable initially deferred
+for each row execute function each_offering_at_least_one_session_f2();
+
+create or replace function each_offering_at_least_one_session_f1()
+returns trigger as $$
+    declare
+        num_sessions integer;
+    begin
+        select count(*) into num_sessions 
+        from Sessions
+        where course_id = NEW.course_id and launch_date = NEW.launch_date;
+        if count = 0 then
+            raise notice 'Each course offering consists of one or more sessions';
+            return null;
+        end if;
+    end;
+$$ language plpgsql;
+
+create or replace function each_offering_at_least_one_session_f2()
+returns trigger as $$
+    declare
+        num_sessions integer;
+    begin
+        select count(*) into num_sessions 
+        from Sessions
+        where course_id = OLD.course_id and launch_date = OLD.launch_date;
+        if count <= 1 then
+            raise notice 'Each course offering consists of one or more sessions';
+            return null;
+        end if;
+    end;
+$$ language plpgsql;
