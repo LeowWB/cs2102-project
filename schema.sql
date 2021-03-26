@@ -1,7 +1,7 @@
 -- all monetary values are stored as int (number of cents) to avoid recurring decimals
 create table Customers
 (
-    cust_id integer primary key,
+    cust_id serial primary key,
     address text,
     phone   varchar(20),
     name    text,
@@ -22,14 +22,14 @@ create table Credit_cards
 
 create table Rooms
 (
-    rid              integer primary key,
+    rid              serial primary key,
     location         text,
     seating_capacity integer
 );
 
 create table Course_packages
 (
-    package_id             integer primary key,
+    package_id             serial primary key,
     sale_start_date        date,
     sale_end_date          date,
     num_free_registrations integer,
@@ -58,7 +58,7 @@ create table Buys
 
 create table Employees
 (
-    eid         integer primary key,
+    eid         serial primary key,
     salary_type char(9)     not null
         check ( salary_type in ('full_time', 'part_time') ),
     job_type    varchar(20) not null
@@ -149,7 +149,7 @@ create table Specializes
 
 create table Courses
 (
-    course_id   integer primary key,
+    course_id   serial primary key,
     title       text,
     description text,
     duration    integer,
