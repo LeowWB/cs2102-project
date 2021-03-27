@@ -1,4 +1,5 @@
 -- all monetary values are stored as int (number of cents) to avoid recurring decimals
+drop table if exists Customers cascade;
 create table Customers
 (
     cust_id serial primary key,
@@ -9,6 +10,7 @@ create table Customers
 );
 
 -- some credit cards have 19-digit numbers
+drop table if exists Credit_cards cascade;
 create table Credit_cards
 (
     number      varchar(19) primary key,
@@ -20,6 +22,7 @@ create table Credit_cards
     foreign key (cust_id) references Customers (cust_id)
 );
 
+drop table if exists Rooms cascade;
 create table Rooms
 (
     rid              serial primary key,
@@ -27,6 +30,7 @@ create table Rooms
     seating_capacity integer
 );
 
+drop table if exists Course_packages cascade;
 create table Course_packages
 (
     package_id             serial primary key,
@@ -40,6 +44,7 @@ create table Course_packages
 );
 
 -- no need cust_id; if we know the credit card number then we know the customer
+drop table if exists Buys cascade;
 create table Buys
 (
     date                      date,
@@ -56,6 +61,7 @@ create table Buys
  full or part time.
  */
 
+drop table if exists Employees cascade;
 create table Employees
 (
     eid         serial primary key,
@@ -74,6 +80,7 @@ create table Employees
     unique (eid, salary_type)
 );
 
+drop table if exists Part_time_Emp cascade;
 create table Part_time_Emp
 (
     eid         integer primary key,
@@ -83,6 +90,7 @@ create table Part_time_Emp
     foreign key (eid, salary_type) references Employees (eid, salary_type) on delete cascade
 );
 
+drop table if exists Full_time_Emp cascade;
 create table Full_time_Emp
 (
     eid            integer primary key,
@@ -92,6 +100,7 @@ create table Full_time_Emp
     foreign key (eid, salary_type) references Employees (eid, salary_type) on delete cascade
 );
 
+drop table if exists Instructors cascade;
 create table Instructors
 (
     eid      integer,
@@ -102,6 +111,7 @@ create table Instructors
     unique (eid, job_type)
 );
 
+drop table if exists Administrators cascade;
 create table Administrators
 (
     eid      integer references Full_time_Emp (eid) primary key,
@@ -110,6 +120,7 @@ create table Administrators
     foreign key (eid, job_type) references Employees (eid, job_type) on delete cascade
 );
 
+drop table if exists Managers cascade;
 create table Managers
 (
     eid      integer references Full_time_Emp (eid) primary key,
@@ -118,6 +129,7 @@ create table Managers
     foreign key (eid, job_type) references Employees (eid, job_type) on delete cascade
 );
 
+drop table if exists Part_time_instructors cascade;
 create table Part_time_instructors
 (
     eid      integer references Part_time_Emp (eid) primary key,
@@ -126,6 +138,7 @@ create table Part_time_instructors
     foreign key (eid, job_type) references Instructors (eid, job_type) on delete cascade
 );
 
+drop table if exists Full_time_instructors cascade;
 create table Full_time_instructors
 (
     eid      integer references Full_time_Emp (eid) primary key,
@@ -134,12 +147,14 @@ create table Full_time_instructors
     foreign key (eid, job_type) references Instructors (eid, job_type) on delete cascade
 );
 
+drop table if exists Course_areas cascade;
 create table Course_areas
 (
     name    text primary key,
     manager integer not null references Managers (eid)
 );
 
+drop table if exists Specializes cascade;
 create table Specializes
 (
     eid  integer references Instructors (eid),
@@ -147,6 +162,7 @@ create table Specializes
     primary key (eid, name)
 );
 
+drop table if exists Courses cascade;
 create table Courses
 (
     course_id   serial primary key,
@@ -156,6 +172,7 @@ create table Courses
     area        text references Course_areas (name)
 );
 
+drop table if exists Offerings cascade;
 create table Offerings
 (
     course_id                   integer references Courses (course_id),
@@ -174,6 +191,7 @@ create table Offerings
 -- assume all sessions last exactly one hour.
 -- rationale: when we create a new session, we do not need to specify duration or end time (see
 -- functionality 24 in the specs). therefore we assume duration is constant.
+drop table if exists Sessions cascade;
 create table Sessions
 (
     sid         integer,
@@ -191,6 +209,7 @@ create table Sessions
 );
 
 
+drop table if exists Registers cascade;
 create table Registers
 (
     date        date,
@@ -203,6 +222,7 @@ create table Registers
     foreign key (sid, course_id, launch_date) references Sessions (sid, course_id, launch_date)
 );
 
+drop table if exists Redeems cascade;
 create table Redeems
 (
     buys_date   date,
@@ -217,6 +237,7 @@ create table Redeems
     foreign key (sid, course_id, launch_date) references Sessions (sid, course_id, launch_date)
 );
 
+drop table if exists Cancels cascade;
 create table Cancels
 (
     cust_id        integer,
@@ -231,6 +252,7 @@ create table Cancels
     foreign key (sid, launch_date, course_id) references Sessions (sid, launch_date, course_id)
 );
 
+drop table if exists Pay_slips cascade;
 create table Pay_slips
 (
     payment_date   date,
