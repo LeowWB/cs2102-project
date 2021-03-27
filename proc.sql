@@ -118,6 +118,7 @@ $$ LANGUAGE plpgsql;
 --6
 /* This routine is used to find all the instructors who could be assigned to teach a course session. The inputs to the routine include the following: course identifier, session date, and session start hour. The routine returns a table of records consisting of employee identifier and name. */
 CREATE OR REPLACE FUNCTION find_instructors(course_id int, session_date date, session_hour int) 
+RETURNS TABLE(emp_id int, name text) AS $$
 DECLARE
 	curs CURSOR FOR (
 		SELECT eid, I.name, job_type
@@ -126,7 +127,7 @@ DECLARE
 	);
 	r record;
 	total_hours int;
-RETURNS TABLE(emp_id int, name text) AS $$
+BEGIN
 	OPEN curs;
 	LOOP
 		FETCH curs INTO r;
@@ -148,6 +149,8 @@ RETURNS TABLE(emp_id int, name text) AS $$
 		name := r.name;
 		RETURN NEXT;
 	END LOOP;
+	CLOSE curs;
+END;
 $$ LANGUAGE plpgsql;
 
 --7
