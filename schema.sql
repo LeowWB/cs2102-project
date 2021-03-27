@@ -14,7 +14,7 @@ create table Credit_cards
     number      varchar(19) primary key,
     cvv         varchar(4),
     cust_id     integer,
-    from_date   date,
+    from_date   timestamp,
     expiry_date date,
     check (expiry_date > from_date),
     foreign key (cust_id) references Customers (cust_id)
@@ -137,7 +137,7 @@ create table Full_time_instructors
 create table Course_areas
 (
     name    text primary key,
-    manager integer references Managers (eid)
+    manager integer not null references Managers (eid)
 );
 
 create table Specializes
