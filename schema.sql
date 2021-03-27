@@ -270,16 +270,6 @@ create table Pay_slips
 
 -- Each course offering consists of one or more sessions
 
-create constraint trigger each_offering_at_least_one_session_t1
-before insert on Offerings
-deferrable initially deferred
-for each row execute function each_offering_at_least_one_session_f1();
-
-create trigger each_offering_at_least_one_session_t2
-before delete on Sessions
-deferrable initially deferred
-for each row execute function each_offering_at_least_one_session_f2();
-
 create or replace function each_offering_at_least_one_session_f1()
 returns trigger as $$
     declare
@@ -288,7 +278,7 @@ returns trigger as $$
         select count(*) into num_sessions 
         from Sessions
         where course_id = NEW.course_id and launch_date = NEW.launch_date;
-        if count = 0 then
+        if num_sessions = 0 then
             raise notice 'Each course offering consists of one or more sessions';
             return null;
         end if;
@@ -303,26 +293,31 @@ returns trigger as $$
         select count(*) into num_sessions 
         from Sessions
         where course_id = OLD.course_id and launch_date = OLD.launch_date;
-        if count <= 1 then
+        if num_sessions <= 1 then
             raise notice 'Each course offering consists of one or more sessions';
             return null;
         end if;
     end;
 $$ language plpgsql;
 
---each session is on a specific weekday (Monday to Friday)
+drop trigger if exists each_offering_at_least_one_session_t1 on Offerings;
+create trigger each_offering_at_least_one_session_t1
+before insert on Offerings
+for each row execute function each_offering_at_least_one_session_f1();
 
-create trigger sessions_on_weekdays_t
-before insert or update on Sessions
-deferrable initially deferred
-for each row execute function sessions_on_weekdays_f();
+drop trigger if exists each_offering_at_least_one_session_t2 on Sessions;
+create trigger each_offering_at_least_one_session_t2
+before delete on Sessions
+for each row execute function each_offering_at_least_one_session_f2();
+
+--each session is on a specific weekday (Monday to Friday)
 
 create or replace function sessions_on_weekdays_f()
 returns trigger as $$
     declare
         dow integer;
     begin
-        select extract(dow from timestamp NEW.date) into dow;
+        select extract(dow from NEW.date) into dow;
         if dow < 1 or dow > 5 then
             raise notice 'Each session is on a specific weekday';
             return null;
@@ -330,18 +325,12 @@ returns trigger as $$
     end;
 $$ language plpgsql;
 
+drop trigger if exists sessions_on_weekdays_t on Sessions;
+create trigger sessions_on_weekdays_t
+before insert or update on Sessions
+for each row execute function sessions_on_weekdays_f();
 
 --The registration deadline for a course offering must be at least 10 days before its start date.
-
-create trigger registration_ten_days_before_t1
-before insert or update on Offerings
-deferrable initially deferred
-for each row execute function registration_ten_days_before_f1();
-
-create trigger registration_ten_days_before_t2
-before insert on Sessions
-deferrable initially deferred
-for each row execute function registration_ten_days_before_f2();
 
 create or replace function registration_ten_days_before_f1()
 returns trigger as $$
@@ -352,7 +341,7 @@ returns trigger as $$
         from Sessions
         where course_id = NEW.course_id and launch_date = NEW.launch_date;
         if start_date - 10 < NEW.registration_deadline then
-            raise notice 'The registration deadline for a course offering must be at least 10 days before its start date.'
+            raise notice 'The registration deadline for a course offering must be at least 10 days before its start date.';
             return NULL;
         end if;
     end;
@@ -373,8 +362,18 @@ returns trigger as $$
         where course_id = NEW.course_id and launch_date = NEW.launch_date;
 
         if start_date - 10 < reg_deadline then
-            raise notice 'The registration deadline for a course offering must be at least 10 days before its start date.'
+            raise notice 'The registration deadline for a course offering must be at least 10 days before its start date.';
             return NULL;
         end if;
     end;
 $$ language plpgsql;
+
+drop trigger if exists registration_ten_days_before_t1 on Offerings;
+create trigger registration_ten_days_before_t1
+before insert or update on Offerings
+for each row execute function registration_ten_days_before_f1();
+
+drop trigger if exists  registration_ten_days_before_t2 on Sessions;
+create trigger registration_ten_days_before_t2
+before insert on Sessions
+for each row execute function registration_ten_days_before_f2();
