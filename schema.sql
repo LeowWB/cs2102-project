@@ -279,9 +279,9 @@ returns trigger as $$
         from Sessions
         where course_id = NEW.course_id and launch_date = NEW.launch_date;
         if num_sessions = 0 then
-            raise notice 'Each course offering consists of one or more sessions';
-            return null;
+            raise 'Each course offering consists of one or more sessions';
         end if;
+        return null;
     end;
 $$ language plpgsql;
 
@@ -294,15 +294,15 @@ returns trigger as $$
         from Sessions
         where course_id = OLD.course_id and launch_date = OLD.launch_date;
         if num_sessions <= 1 then
-            raise notice 'Each course offering consists of one or more sessions';
-            return null;
+            raise 'Each course offering consists of one or more sessions';
         end if;
     end;
 $$ language plpgsql;
 
 drop trigger if exists each_offering_at_least_one_session_t1 on Offerings;
-create trigger each_offering_at_least_one_session_t1
-before insert on Offerings
+create constraint trigger each_offering_at_least_one_session_t1
+after insert on Offerings
+DEFERRABLE INITIALLY DEFERRED
 for each row execute function each_offering_at_least_one_session_f1();
 
 drop trigger if exists each_offering_at_least_one_session_t2 on Sessions;
@@ -319,9 +319,9 @@ returns trigger as $$
     begin
         select extract(dow from NEW.date) into dow;
         if dow < 1 or dow > 5 then
-            raise notice 'Each session is on a specific weekday';
-            return null;
+            raise 'Each session is on a specific weekday';
         end if;
+        return NEW;
     end;
 $$ language plpgsql;
 
@@ -341,9 +341,9 @@ returns trigger as $$
         from Sessions
         where course_id = NEW.course_id and launch_date = NEW.launch_date;
         if start_date - 10 < NEW.registration_deadline then
-            raise notice 'The registration deadline for a course offering must be at least 10 days before its start date.';
-            return NULL;
+            raise 'The registration deadline for a course offering must be at least 10 days before its start date.';
         end if;
+        return NEw;
     end;
 $$ language plpgsql;
 
@@ -362,9 +362,9 @@ returns trigger as $$
         where course_id = NEW.course_id and launch_date = NEW.launch_date;
 
         if start_date - 10 < reg_deadline then
-            raise notice 'The registration deadline for a course offering must be at least 10 days before its start date.';
-            return NULL;
+            raise 'The registration deadline for a course offering must be at least 10 days before its start date.';
         end if;
+        return NEW;
     end;
 $$ language plpgsql;
 

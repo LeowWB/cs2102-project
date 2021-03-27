@@ -58,3 +58,48 @@ VALUES ('2002-09-14', 1, '344671399807892', 0),
        ('1980-04-29', 9, '5426004743132991', 11),
        ('1990-10-10', 10, '6011784365986811', 4);
 
+INSERT INTO Employees
+VALUES (1, 'part_time', 'part_time_instructor', 'Madeline Parisian', '96836734',
+        '267 Kaylie Divide\nEstherstad, CA 46624-1390', 'beverly20@example.org', '2020-10-29', '2015-08-22'),
+       (2, 'full_time', 'administrator', 'Mr. Monserrate Kohler', '96467215',
+        '359 Jamir Square Apt. 048\nLake Zackery, NH 39502-1706', 'blair.dach@example.org', '2020-10-27', '2003-04-30'),
+       (3, 'full_time', 'manager', 'Dayna Schultz', '97303635', '877 Arlene Coves Suite 434\nNew Wilson, MN 88696-8280',
+        'katelin.dietrich@example.org', '2020-12-16', '2019-11-11'),
+       (4, 'full_time', 'manager', 'Prof. Lorenz Walter V', '95298596',
+        '90722 Sienna Streets Suite 142\nWest Jerrod, DE 13419-1991', 'fadel.hellen@example.org', '2020-07-30',
+        '2011-11-06'),
+       (5, 'full_time', 'full_time_instructor', 'Cletus Jerde', '97233481',
+        '775 Martina Station Apt. 190\nSouth Elody, IN 35993-2103', 'haylie15@example.com', '2020-05-31', '1983-09-03');
+
+INSERT INTO Part_time_Emp
+VALUES (1, 1450, 'part_time');
+
+INSERT INTO Full_time_Emp
+VALUES (2, 145000, 'full_time'),
+       (3, 145000, 'full_time'),
+       (4, 145000, 'full_time'),
+       (5, 145000, 'full_time');
+
+INSERT INTO Managers VALUES
+(3, 'manager');
+
+INSERT INTO Administrators VALUES
+(2, 'administrator');
+
+insert into Instructors VALUES
+(5, 'full_time_instructor');
+
+insert into Course_areas VALUES
+('math', 3);
+
+INSERT INTO Courses VALUES
+(1, 'CS2102', 'db', 12, 'math');
+
+BEGIN TRANSACTION;
+INSERT INTO Offerings VALUES
+(1, '2020-05-31', 10000, 20, '2020-05-11', 2);
+
+INSERT INTO Sessions VALUES
+(1, 1, '2020-05-31',5, '2020-06-01', 9, 5 );
+COMMIT;
+
