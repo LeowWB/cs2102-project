@@ -377,3 +377,49 @@ drop trigger if exists  registration_ten_days_before_t2 on Sessions;
 create trigger registration_ten_days_before_t2
 before insert on Sessions
 for each row execute function registration_ten_days_before_f2();
+
+-- employee must be in part time or full time
+create or replace function employee_in_part_or_full_time_f()
+returns trigger as $$
+    declare
+        changedEid integer;
+    begin
+        if tg_op = 'INSERT' then
+            -- inserting into employees
+            changedEid := NEW.eid;
+        else
+            -- deleting from part/full time
+            changedEid := OLD.eid;
+        end if;
+        -- deleting from employees no trigger because:
+        -- -- will cascade;
+
+        -- inserting into full/part time no trigger because:
+        -- -- FK enforces already;
+
+        if not exists(select 1 from Full_time_Emp where eid = changedEid) and
+           not exists(select 1 from Part_time_Emp where eid = changedEid)
+           then
+            raise 'All employees must either be part or full time';
+        end if;
+        return null;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists employee_in_part_or_full_time_t1 on Employees;
+create constraint trigger employee_in_part_or_full_time_t1
+after insert on Employees
+DEFERRABLE INITIALLY DEFERRED
+for each row execute function employee_in_part_or_full_time_f();
+
+drop trigger if exists employee_in_part_or_full_time_t2 on Part_time_Emp;
+create constraint trigger employee_in_part_or_full_time_t2
+after delete or update on Part_time_Emp
+DEFERRABLE INITIALLY DEFERRED
+for each row execute function employee_in_part_or_full_time_f();
+
+drop trigger if exists employee_in_part_or_full_time_t3 on Full_time_Emp;
+create constraint trigger employee_in_part_or_full_time_t3
+after delete or update on Full_time_Emp
+DEFERRABLE INITIALLY DEFERRED
+for each row execute function employee_in_part_or_full_time_f();

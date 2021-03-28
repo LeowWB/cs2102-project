@@ -58,6 +58,7 @@ VALUES ('2002-09-14', 1, '344671399807892', 0),
        ('1980-04-29', 9, '5426004743132991', 11),
        ('1990-10-10', 10, '6011784365986811', 4);
 
+begin transaction; -- for employees
 INSERT INTO Employees
 VALUES (1, 'part_time', 'part_time_instructor', 'Madeline Parisian', '96836734',
         '267 Kaylie Divide\nEstherstad, CA 46624-1390', 'beverly20@example.org', '2020-10-29', '2015-08-22'),
@@ -89,17 +90,19 @@ INSERT INTO Administrators VALUES
 insert into Instructors VALUES
 (5, 'full_time_instructor');
 
+commit; -- for employees
+
 insert into Course_areas VALUES
 ('math', 3);
 
 INSERT INTO Courses VALUES
 (1, 'CS2102', 'db', 12, 'math');
 
-BEGIN TRANSACTION;
+BEGIN TRANSACTION; -- for offerings
 INSERT INTO Offerings VALUES
 (1, '2020-05-31', 10000, 20, '2020-05-11', 2);
 
 INSERT INTO Sessions VALUES
 (1, 1, '2020-05-31',5, '2020-06-01', 9, 5 );
-COMMIT;
+COMMIT; -- for offerings
 
