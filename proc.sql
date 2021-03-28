@@ -2,13 +2,19 @@ CREATE TYPE employee_status AS ENUM ('full_time', 'part_time');
 CREATE TYPE employee_category AS ENUM ('administrator', 'manager', 'instructor');
 
 CREATE OR REPLACE FUNCTION get_course_duration(cid int) RETURNS int AS $$
+BEGIN
+	RETURN QUERY
 	SELECT duration FROM Courses WHERE course_id = cid;
+END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION instructor_month_hours(emp_id int, curr_year int, curr_month int) RETURNS int AS $$
+BEGIN
+	RETURN QUERY
 	SELECT sum(duration)
 	FROM Sessions JOIN Courses ON Sessions.course_id = Courses.course_id
 	WHERE instructor = emp_id AND EXTRACT(year FROM date) = curr_year AND EXTRACT(month FROM date) = curr_month;
+END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION ranges_overlap(start1 int, end1 int, start2 int, end2 int) RETURNS BOOLEAN AS $$
@@ -33,11 +39,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION instructor_session_allowed(emp_id int, session_date date, session_hour int, session_duration int) RETURNS boolean AS $$
-	NOT EXISTS(
+BEGIN
+	RETURN QUERY
+	SELECT NOT EXISTS(
 		SELECT 1
 		FROM Sessions JOIN Courses ON Sessions.course_id = Courses.course_id
 		WHERE instructor = emp_id AND date = session_date AND instructor_sessions_clash(session_hour, session_duration, start_time, duration)
 	)
+END;
 $$ LANGUAGE plpgsql;
 
 
@@ -46,7 +55,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE PROCEDURE add_employee(name text, address text, phone text, email text, status employee_status, salary int, join_date date, category employee_category, course_areas text[]) AS $$
 DECLARE
 	job_type text;
-	eid int;
+	emp_id int;
 BEGIN;
 	IF ((category = 'administrator' OR category = 'manager') AND status = 'part_time') THEN
 		RAISE EXCEPTION 'Administrators or managers cannot be part-time employees.';
@@ -65,25 +74,25 @@ BEGIN;
 	
 	INSERT INTO Employees(salary_type, job_type, name, phone, address, email, join_date) 
 	VALUES (status, job_type, name, phone, address, email, join_date)
-	RETURNING eid INTO eid;
+	RETURNING eid INTO emp_id;
 	IF (status = 'part_time') THEN
-		INSERT INTO Part_time_Emp VALUES(eid, salary, status);
+		INSERT INTO Part_time_Emp VALUES(emp_id, salary, status);
 	END IF;
 	IF (status = 'full_time') THEN
-		INSERT INTO Full_time_Emp VALUES(eid, salary, status);
+		INSERT INTO Full_time_Emp VALUES(emp_id, salary, status);
 	END IF;
 	IF (category = 'administrator') THEN
-		INSERT INTO Administrators VALUES(eid, job_type);
+		INSERT INTO Administrators VALUES(emp_id, job_type);
 	END IF;
 	IF (category = 'manager') THEN
-		INSERT INTO Managers VALUES(eid, job_type);
+		INSERT INTO Managers VALUES(emp_id, job_type);
 		FOREACH area IN course_areas
 		LOOP
-			INSERT INTO Course_areas VALUES(area, eid);
+			INSERT INTO Course_areas VALUES(area, emp_id);
 		END LOOP;
 	END IF;
 	IF (category = 'instructor') THEN
-		INSERT INTO Instructors VALUES(eid, job_type);
+		INSERT INTO Instructors VALUES(emp_id, job_type);
 		/* insert back if have different tables again
 		IF (status = 'part_time') THEN
 			INSERT INTO Part_time_instructors VALUES(eid, job_type);
@@ -94,7 +103,7 @@ BEGIN;
 		*/
 		FOREACH area IN course_areas
 		LOOP
-			INSERT INTO Specializes VALUES(eid, area);
+			INSERT INTO Specializes VALUES(emp_id, area);
 		END LOOP;
 	END IF;
 END;
@@ -104,25 +113,29 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to update an employee’s departed date a non-null value. The inputs to the routine is an employee identifier and a departure date. The update operation is rejected if any one of the following conditions hold: (1) the employee is an administrator who is handling some course offering where its registration deadline is after the employee’s departure date; (2) the employee is an instructor who is teaching some course session that starts after the employee’s departure date; or (3) the employee is a manager who is managing some area. */
 CREATE OR REPLACE PROCEDURE remove_employee(emp_id int, depart_date date) AS $$
 DECLARE
+	job_type text;
 BEGIN
-	SELECT job_type INTO job_type FROM Employees WHERE eid = emp_id;
+	SELECT E.job_type INTO job_type FROM Employees E WHERE eid = emp_id;
 	IF (job_type = 'administrator' AND EXISTS(
 		SELECT 1 
 		FROM Offerings 
-		WHERE handler = emp_id AND registration_deadline > depart_date)) THEN
-			RAISE EXCEPTION 'Administrator is handling some course offering where its registration deadline is after his departure date.';
+		WHERE handler = emp_id AND registration_deadline > depart_date
+	)) THEN
+		RAISE EXCEPTION 'Administrator is handling some course offering where its registration deadline is after his departure date.';
 	END IF;
 	IF ((job_type = 'full_time_instructor' OR job_type = 'part_time_instructor') AND EXISTS(
 		SELECT 1
 		FROM Sessions
-		WHERE instructor = emp_id AND date > depart_date)) THEN
-			RAISE EXCEPTION 'Instructor is teaching some course session that starts after his departure date.';
+		WHERE instructor = emp_id AND date > depart_date
+	)) THEN
+		RAISE EXCEPTION 'Instructor is teaching some course session that starts after his departure date.';
 	END IF;
 	IF (job_type = 'manager' AND EXISTS(
 		SELECT 1
 		FROM Course_areas
-		WHERE manager = emp_id)) THEN
-			RAISE EXCEPTION 'Manager is managing some course area.';
+		WHERE manager = emp_id
+	)) THEN
+		RAISE EXCEPTION 'Manager is managing some course area.';
 	END IF;
 	UPDATE Employees SET depart_date = depart_date WHERE eid = emp_id;
 END;
@@ -159,13 +172,13 @@ $$ LANGUAGE plpgsql;
 
 --6
 /* This routine is used to find all the instructors who could be assigned to teach a course session. The inputs to the routine include the following: course identifier, session date, and session start hour. The routine returns a table of records consisting of employee identifier and name. */
-CREATE OR REPLACE FUNCTION find_instructors(cid int, session_date date, session_hour int) 
+CREATE OR REPLACE FUNCTION find_instructors(course_id int, session_date date, session_hour int) 
 RETURNS TABLE(emp_id int, name text) AS $$
 DECLARE
 	emp_curs CURSOR FOR (
 		SELECT eid, I.name AS name, job_type
 		FROM (Instructors I JOIN Specializes S ON I.eid = S.eid) JOIN Courses C ON S.name = C.area
-		WHERE course_id = cid
+		WHERE C.course_id = course_id
 	);
 	curr_emp record;
 BEGIN
@@ -176,7 +189,7 @@ BEGIN
 		
 		CONTINUE WHEN curr_emp.job_type = 'part_time_instructor' AND instructor_month_hours(curr_emp.eid, EXTRACT(year FROM session_date), EXTRACT(month FROM session_date)) >= 30;
 		
-		IF (instructor_session_allowed(curr_emp.eid, session_date, session_hour, get_course_duration(cid))) THEN
+		IF (instructor_session_allowed(curr_emp.eid, session_date, session_hour, get_course_duration(course_id))) THEN
 			emp_id := curr_emp.eid;
 			name := curr_emp.name;
 			RETURN NEXT;
@@ -188,13 +201,13 @@ $$ LANGUAGE plpgsql;
 
 --7
 /* This routine is used to retrieve the availability information of instructors who could be assigned to teach a specified course. The inputs to the routine include the following: course identifier, start date, and end date. The routine returns a table of records consisting of the following information: employee identifier, name, total number of teaching hours that the instructor has been assigned for this month, day (which is within the input date range [start date, end date]), and an array of the available hours for the instructor on the specified day. The output is sorted in ascending order of employee identifier and day, and the array entries are sorted in ascending order of hour. */
-CREATE OR REPLACE FUNCTION get_available_instructors(cid int, start_date date, end_date date) 
+CREATE OR REPLACE FUNCTION get_available_instructors(course_id int, start_date date, end_date date) 
 RETURNS TABLE(emp_id int, name text, total_hours int, avail_day date, avail_hours int[]) AS $$
 DECLARE
 	emp_curs CURSOR FOR (
 		SELECT eid, I.name AS name, job_type
 		FROM (Instructors I JOIN Specializes S ON I.eid = S.eid) JOIN Courses C ON S.name = C.area
-		WHERE course_id = cid
+		WHERE C.course_id = course_id
 		ORDER BY eid
 	);
 	curr_emp record;
@@ -222,7 +235,7 @@ BEGIN
 				EXIT WHEN curr_hour >= 18;
 				CONTINUE WHEN curr_hour >= 12 AND curr_hour < 14;
 				
-				IF (instructor_session_allowed(curr_emp.eid, curr_date, curr_hour, get_course_duration(cid))) THEN
+				IF (instructor_session_allowed(curr_emp.eid, curr_date, curr_hour, get_course_duration(course_id))) THEN
 					array_append(hours_arr, curr_hour);
 				END IF;
 				
