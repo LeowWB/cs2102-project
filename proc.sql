@@ -260,15 +260,17 @@ $$ LANGUAGE plpgsql;
 
 --8
 /* This routine is used to find all the rooms that could be used for a course session. The inputs to the routine include the following: session date, session start hour, and session duration. The routine returns a table of room identifiers. */
-CREATE OR REPLACE FUNCTION find_rooms(session_date date, session_start_hour int, session_duration int) 
+CREATE OR REPLACE FUNCTION find_rooms(session_date date, start_hour int, duration int) 
 RETURNS TABLE(room_id int) AS $$
+BEGIN;
 	SELECT rid
 	FROM Rooms
 	WHERE NOT EXISTS(
 		SELECT 1
-		FROM Sessions
-		WHERE room = rid AND date = session_date AND start_time >= session_start_hour AND start_time < session_start_hour + session_duration
+		FROM Sessions S JOIN Courses C ON S.course_id = C.course_id
+		WHERE room = rid AND date = session_date AND sessions_clash(start_hour, duration, S.start_time, C.duration)
 	);
+END;
 $$ LANGUAGE plpgsql;
 
 --9
