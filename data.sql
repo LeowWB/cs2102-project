@@ -98,7 +98,7 @@ insert into Course_areas VALUES
 ('math', 3);
 
 INSERT INTO Courses VALUES
-(1, 'CS2102', 'db', 12, 'math');
+(1, 'CS2102', 'db', 2, 'math');
 
 INSERT INTO Specializes VALUES
 (5, 'math');

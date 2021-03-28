@@ -503,7 +503,7 @@ for each row execute function session_instructor_is_specialized_f();
 create or replace function instructor_no_consecutive_sessions_f()
 returns trigger as $$
     begin
-        if exists(select 1 from Sessions S inner join Courses C on S.course_id = C.course_id where NEW.instructor = S.instructor and NEW.start_time = S.start_time + C.duration)  then
+        if exists(select 1 from Sessions S inner join Courses C on S.course_id = C.course_id where NEW.instructor = S.instructor and S.date = NEW.date and NEW.start_time = S.start_time + C.duration)  then
             raise 'An instructor cannot teach two courses consecutively';
         end if;
         return NEW;
@@ -530,6 +530,24 @@ drop trigger if exists  instructor_max_30h_per_month_t on Sessions;
 create trigger instructor_max_30h_per_month_t
 after insert or update on Sessions
 for each row execute function instructor_max_30h_per_month_f();
+
 -- Each instructor can teach at most one course session at any hour.
--- i.e., there must be at least one hour of break between any two course sessions that the instructor is teaching.
+create or replace function instructor_no_overlapping_sessions_f()
+returns trigger as $$
+    declare
+        new_duration integer;
+    begin
+        select duration from Courses where course_id = NEW.course_id into new_duration;
+        if exists(select 1 from Sessions S inner join Courses C on S.course_id = C.course_id where NEW.instructor = S.instructor and S.date = NEW.date and LEAST(C.duration + S.start_time, NEW.start_time + new_duration) > GREATEST(S.start_time, NEW.start_time))  then
+            raise 'An instructor cannot teach two courses simultaneously';
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists  instructor_no_overlapping_sessions_t on Sessions;
+create trigger instructor_no_overlapping_sessions_t
+before insert or update on Sessions
+for each row execute function instructor_no_overlapping_sessions_f();
+
 -- The sessions for a course offering are numbered consecutively starting from 1;
