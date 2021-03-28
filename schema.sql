@@ -378,7 +378,7 @@ create trigger registration_ten_days_before_t2
 before insert on Sessions
 for each row execute function registration_ten_days_before_f2();
 
--- employee must be in part time or full time
+-- employee total participation in part time or full time
 create or replace function employee_in_part_or_full_time_f()
 returns trigger as $$
     declare
@@ -423,3 +423,56 @@ create constraint trigger employee_in_part_or_full_time_t3
 after delete or update on Full_time_Emp
 DEFERRABLE INITIALLY DEFERRED
 for each row execute function employee_in_part_or_full_time_f();
+
+-- employee total participation in admin / instr / manager
+create or replace function employee_is_administrator_or_instructor_or_manager_f()
+returns trigger as $$
+    declare
+        changedEid integer;
+    begin
+        if tg_op = 'INSERT' then
+            -- inserting into employees
+            changedEid := NEW.eid;
+        else
+            -- deleting from admin/instr/manager time
+            changedEid := OLD.eid;
+        end if;
+        -- deleting from employees no trigger because:
+        -- -- will cascade;
+
+        -- inserting into admin/instr/manager no trigger because:
+        -- -- FK enforces already;
+
+        if not exists(select 1 from Administrators where eid = changedEid) and
+           not exists(select 1 from Instructors where eid = changedEid) and
+           not exists(select 1 from Managers where eid = changedEid)
+           then
+            raise 'All employees must either be an administrator, an instructor, or a manager';
+        end if;
+        return null;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists employee_is_administrator_or_instructor_or_manager_t1 on Employees;
+create constraint trigger employee_is_administrator_or_instructor_or_manager_t1
+after insert on Employees
+DEFERRABLE INITIALLY DEFERRED
+for each row execute function employee_is_administrator_or_instructor_or_manager_f();
+
+drop trigger if exists employee_is_administrator_or_instructor_or_manager_t2 on Administrators;
+create constraint trigger employee_is_administrator_or_instructor_or_manager_t2
+after delete or update on Administrators
+DEFERRABLE INITIALLY DEFERRED
+for each row execute function employee_is_administrator_or_instructor_or_manager_f();
+
+drop trigger if exists employee_in_part_or_full_time_t3 on Instructors;
+create constraint trigger employee_in_part_or_full_time_t3
+after delete or update on Instructors
+DEFERRABLE INITIALLY DEFERRED
+for each row execute function employee_is_administrator_or_instructor_or_manager_f();
+
+drop trigger if exists employee_in_part_or_full_time_t4 on Managers;
+create constraint trigger employee_in_part_or_full_time_t4
+after delete or update on Managers
+DEFERRABLE INITIALLY DEFERRED
+for each row execute function employee_is_administrator_or_instructor_or_manager_f();

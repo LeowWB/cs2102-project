@@ -82,12 +82,14 @@ VALUES (2, 145000, 'full_time'),
        (5, 145000, 'full_time');
 
 INSERT INTO Managers VALUES
-(3, 'manager');
+(3, 'manager'),
+(4, 'manager');
 
 INSERT INTO Administrators VALUES
 (2, 'administrator');
 
 insert into Instructors VALUES
+(1, 'part_time_instructor'),
 (5, 'full_time_instructor');
 
 commit; -- for employees
