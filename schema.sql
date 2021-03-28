@@ -278,7 +278,7 @@ returns trigger as $$
     declare
         num_sessions integer;
     begin
-        select count(*) into num_sessions 
+        select count(*) into num_sessions
         from Sessions
         where course_id = NEW.course_id and launch_date = NEW.launch_date;
         if num_sessions = 0 then
@@ -293,12 +293,13 @@ returns trigger as $$
     declare
         num_sessions integer;
     begin
-        select count(*) into num_sessions 
+        select count(*) into num_sessions
         from Sessions
         where course_id = OLD.course_id and launch_date = OLD.launch_date;
         if num_sessions <= 1 then
             raise 'Each course offering consists of one or more sessions';
         end if;
+        return OLD;
     end;
 $$ language plpgsql;
 
@@ -479,3 +480,56 @@ create constraint trigger employee_in_part_or_full_time_t4
 after delete or update on Managers
 DEFERRABLE INITIALLY DEFERRED
 for each row execute function employee_is_administrator_or_instructor_or_manager_f();
+
+-- course session instructor must be specialized in that area
+create or replace function session_instructor_is_specialized_f()
+returns trigger as $$
+    declare
+        changedEid integer;
+    begin
+        if not exists(select 1 from Specializes s inner join Course_areas ca on ca.name = s.name inner join Courses c on ca.name = c.area where s.eid = NEW.instructor and c.course_id = NEW.course_id)  then
+            raise 'An instructor teaching a course session must be specialized in that area';
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists  session_instructor_is_specialized_t on Sessions;
+create trigger session_instructor_is_specialized_t
+before insert or update on Sessions
+for each row execute function session_instructor_is_specialized_f();
+
+-- Each instructor must not be assigned to teach two consecutive course sessions;
+create or replace function instructor_no_consecutive_sessions_f()
+returns trigger as $$
+    begin
+        if exists(select 1 from Sessions S inner join Courses C on S.course_id = C.course_id where NEW.instructor = S.instructor and NEW.start_time = S.start_time + C.duration)  then
+            raise 'An instructor cannot teach two courses consecutively';
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists  instructor_no_consecutive_sessions_t on Sessions;
+create trigger instructor_no_consecutive_sessions_t
+before insert or update on Sessions
+for each row execute function instructor_no_consecutive_sessions_f();
+
+-- Each part-time instructor must not teach more than 30 hours for each month.
+create or replace function instructor_max_30h_per_month_f()
+returns trigger as $$
+    begin
+        if (select sum(C.duration) from Sessions S inner join Courses C on S.course_id = C.course_id where S.instructor = NEW.instructor and (extract(year from NEW.date)) = (extract(year from S.date)) and (extract(month from NEW.date)) = (extract(month from S.date))) > 30  then
+            raise 'An instructor cannot teach more than 30 hours for each month';
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists  instructor_max_30h_per_month_t on Sessions;
+create trigger instructor_max_30h_per_month_t
+after insert or update on Sessions
+for each row execute function instructor_max_30h_per_month_f();
+-- Each instructor can teach at most one course session at any hour.
+-- i.e., there must be at least one hour of break between any two course sessions that the instructor is teaching.
+-- The sessions for a course offering are numbered consecutively starting from 1;
