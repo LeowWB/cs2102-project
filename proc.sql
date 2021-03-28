@@ -10,7 +10,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION instructor_month_hours(_emp_id int, _year int, _month int) RETURNS int AS $$
+CREATE OR REPLACE FUNCTION get_instructor_month_hours(_emp_id int, _year int, _month int) RETURNS int AS $$
 BEGIN
 	RETURN QUERY
 	SELECT sum(duration)
@@ -19,34 +19,51 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION ranges_overlap(_start1 int, _end1 int, _start2 int, _end2 int) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION do_ranges_overlap(_start1 int, _end1 int, _start2 int, _end2 int) RETURNS BOOLEAN AS $$
 BEGIN
 	RETURN _end1 > _start2 AND _start1 < _end2;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION is_session_legal(_start_hour int, _duration int) RETURNS boolean AS $$
 BEGIN
-	RETURN ranges_overlap(_start1, _start1 + _duration1, _start2, _start2 + _duration2);
+	RETURN _start_hour >= 9 AND (_start_hour + _duration) <= 18 AND NOT do_sessions_clash(_start_hour, _duration, 12, 2);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION instructor_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) RETURNS boolean AS $$
-DECLARE
-	_break_time int;
+CREATE OR REPLACE FUNCTION do_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) RETURNS BOOLEAN AS $$
 BEGIN
-	_break_time := 1;
-	RETURN ranges_overlap(_start1, _start1 + _duration1 + _break_time, _start2, _start2 + _duration2 + _break_time);
+	RETURN do_ranges_overlap(_start1, _start1 + _duration1, _start2, _start2 + _duration2);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION instructor_session_allowed(_emp_id int, _date date, _start_hour int, _duration int) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION is_session_allowed(_room_id int, _date date, _start_hour int, _duration int) RETURNS boolean AS $$
 BEGIN
 	RETURN QUERY
 	SELECT NOT EXISTS(
 		SELECT 1
 		FROM Sessions S JOIN Courses C ON S.course_id = C.course_id
-		WHERE instructor = _emp_id AND date = _date AND instructor_sessions_clash(_start_hour, _duration, start_time, duration)
+		WHERE room = _room_id AND date = _date AND do_sessions_clash(_start_hour, _duration, start_time, duration)
+	)
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION do_instructor_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) RETURNS boolean AS $$
+DECLARE
+	_break_time int;
+BEGIN
+	_break_time := 1;
+	RETURN do_ranges_overlap(_start1, _start1 + _duration1 + _break_time, _start2, _start2 + _duration2 + _break_time);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION is_instructor_session_allowed(_emp_id int, _date date, _start_hour int, _duration int) RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT NOT EXISTS(
+		SELECT 1
+		FROM Sessions S JOIN Courses C ON S.course_id = C.course_id
+		WHERE instructor = _emp_id AND date = _date AND do_instructor_sessions_clash(_start_hour, _duration, start_time, duration)
 	)
 END;
 $$ LANGUAGE plpgsql;
@@ -88,7 +105,7 @@ BEGIN;
 	END IF;
 	IF (_category = 'manager') THEN
 		INSERT INTO Managers VALUES(_emp_id, _job_type);
-		FOREACH _area IN _course_areas
+		FOREACH _area IN ARRAY _course_areas
 		LOOP
 			INSERT INTO Course_areas VALUES(_area, _emp_id);
 		END LOOP;
@@ -103,7 +120,7 @@ BEGIN;
 			INSERT INTO Full_time_instructors VALUES(_emp_id, _job_type);
 		END IF;
 		*/
-		FOREACH _area IN _course_areas
+		FOREACH _area IN ARRAY _course_areas
 		LOOP
 			INSERT INTO Specializes VALUES(_emp_id, _area);
 		END LOOP;
@@ -177,7 +194,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 --6
-/* This routine is used to find all the instructors who could be assigned to teach a course session. The inputs to the routine include the following: course identifier, session date, and session start hour. The routine returns a table of records consisting of employee identifier and name. */
+/* This routine is used to find all the instructors who could be assigned to teach a course session. The inputs to the routine include the following: course identifier, session date, and session start hour. The routine returns a table of records consisting of employee identifier and name. 
+Returns empty table if the given session is illegal. */
 CREATE OR REPLACE FUNCTION find_instructors(_course_id int, _session_date date, _session_start_hour int) 
 RETURNS TABLE(emp_id int, name text) AS $$
 DECLARE
@@ -186,16 +204,23 @@ DECLARE
 		FROM (Instructors I JOIN Specializes S ON I.eid = S.eid) JOIN Courses C ON S.name = C.area
 		WHERE course_id = _course_id
 	);
+	_course_duration int;
 	_emp record;
 BEGIN
+	_course_duration := get_course_duration(_course_id);
+	
+	IF (NOT is_session_legal(_session_start_hour, _course_duration)) THEN
+		RETURN;
+	END IF;
+
 	OPEN _emp_curs;
 	LOOP
 		FETCH _emp_curs INTO _emp;
 		EXIT WHEN NOT FOUND;
 		
-		CONTINUE WHEN _emp.job_type = 'part_time_instructor' AND instructor_month_hours(_emp.eid, EXTRACT(year FROM _session_date), EXTRACT(month FROM _session_date)) >= 30;
+		CONTINUE WHEN (_emp.job_type = 'part_time_instructor' AND get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _session_date), EXTRACT(month FROM _session_date)) >= 30);
 		
-		IF (instructor_session_allowed(_emp.eid, _session_date, _session_start_hour, get_course_duration(_course_id))) THEN
+		IF (is_instructor_session_allowed(_emp.eid, _session_date, _session_start_hour, _course_duration)) THEN
 			emp_id := _emp.eid;
 			name := _emp.name;
 			RETURN NEXT;
@@ -206,9 +231,10 @@ END;
 $$ LANGUAGE plpgsql;
 
 --7
-/* This routine is used to retrieve the availability information of instructors who could be assigned to teach a specified course. The inputs to the routine include the following: course identifier, start date, and end date. The routine returns a table of records consisting of the following information: employee identifier, name, total number of teaching hours that the instructor has been assigned for this month, day (which is within the input date range [start date, end date]), and an array of the available hours for the instructor on the specified day. The output is sorted in ascending order of employee identifier and day, and the array entries are sorted in ascending order of hour. */
+/* This routine is used to retrieve the availability information of instructors who could be assigned to teach a specified course. The inputs to the routine include the following: course identifier, start date, and end date. The routine returns a table of records consisting of the following information: employee identifier, name, total number of teaching hours that the instructor has been assigned for this month, day (which is within the input date range [start date, end date]), and an array of the available hours for the instructor on the specified day. The output is sorted in ascending order of employee identifier and day, and the array entries are sorted in ascending order of hour. 
+Available hours exclude those during which sessions cannot be held. */
 CREATE OR REPLACE FUNCTION get_available_instructors(_course_id int, _start_date date, _end_date date) 
-RETURNS TABLE(emp_id int, name text, total_hours int, avail_day date, avail_hours int[]) AS $$
+RETURNS TABLE(emp_id int, name text, month_hours int, avail_day date, avail_hours int[]) AS $$
 DECLARE
 	_emp_curs CURSOR FOR (
 		SELECT eid, I.name AS name, job_type
@@ -216,12 +242,15 @@ DECLARE
 		WHERE course_id = _course_id
 		ORDER BY eid
 	);
+	_course_duration int;
+	_month_hours int;
+	_avail_hours int[];
 	_emp record;
 	_date date;
 	_hour int;
-	_month_hours int;
-	_hours_arr int[];
 BEGIN
+	_course_duration := get_course_duration(_course_id);
+
 	OPEN _emp_curs;
 	LOOP
 		FETCH _emp_curs INTO _emp;
@@ -229,28 +258,28 @@ BEGIN
 		
 		_date := _start_date;
 		WHILE (_date <= _end_date) LOOP
-			_month_hours := instructor_month_hours(_emp.eid, EXTRACT(year FROM _date), EXTRACT(month FROM _date));
+			_month_hours := get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _date), EXTRACT(month FROM _date));
 			
-			CONTINUE WHEN _emp.job_type = 'part_time_instructor' AND _month_hours >= 30;
+			CONTINUE WHEN (_emp.job_type = 'part_time_instructor' AND _month_hours >= 30);
 			
-			_hours_arr := ARRAY[];
+			_avail_hours := ARRAY[];
 			_hour := 9;
 			WHILE (_hour < 18) LOOP
-				CONTINUE WHEN _hour >= 12 AND _hour < 14;
+				CONTINUE WHEN (NOT is_session_legal(_hour, _course_duration));
 				
-				IF (instructor_session_allowed(_emp.eid, _date, _hour, get_course_duration(_course_id))) THEN
-					array_append(_hours_arr, _hour);
+				IF (is_instructor_session_allowed(_emp.eid, _date, _hour, _course_duration)) THEN
+					array_append(_avail_hours, _hour);
 				END IF;
 				
 				_hour := _hour + 1;
 			END LOOP;
 			
-			IF (cardinality(_hours_arr) > 0) THEN
+			IF (cardinality(_avail_hours) > 0) THEN
 				emp_id := _emp.eid;
 				name := _emp.name;
-				total_hours := _month_hours;
+				month_hours := _month_hours;
 				avail_day := _date;
-				avail_hours := _hours_arr;
+				avail_hours := _avail_hours;
 				RETURN NEXT;
 			END IF;
 			
@@ -262,26 +291,65 @@ END;
 $$ LANGUAGE plpgsql;
 
 --8
-/* This routine is used to find all the rooms that could be used for a course session. The inputs to the routine include the following: session date, session start hour, and session duration. The routine returns a table of room identifiers. */
+/* This routine is used to find all the rooms that could be used for a course session. The inputs to the routine include the following: session date, session start hour, and session duration. The routine returns a table of room identifiers. 
+Returns empty table if the given session is illegal. */
 CREATE OR REPLACE FUNCTION find_rooms(_session_date date, _session_start_hour int, _session_duration int) 
 RETURNS TABLE(room_id int) AS $$
-BEGIN;
+BEGIN
+	IF (NOT is_session_legal(_session_start_hour, _course_duration)) THEN
+		RETURN;
+	END IF;
+	
+	RETURN QUERY
 	SELECT rid
 	FROM Rooms
-	WHERE NOT EXISTS(
-		SELECT 1
-		FROM Sessions S JOIN Courses C ON S.course_id = C.course_id
-		WHERE room = rid AND date = _session_date AND sessions_clash(_session_start_hour, _session_duration, start_time, duration)
-	);
+	WHERE is_session_allowed(rid, _session_date, _session_start_hour, _session_duration);
 END;
 $$ LANGUAGE plpgsql;
 
 --9
-/* This routine is used to retrieve the availability information of rooms for a specific duration. The inputs to the routine include a start date and an end date. The routine returns a table of records consisting of the following information: room identifier, room capacity, day (which is within the input date range [start date, end date]), and an array of the hours that the room is available on the specified day. The output is sorted in ascending order of room identifier and day, and the array entries are sorted in ascending order of hour. */
+/* This routine is used to retrieve the availability information of rooms for a specific duration. The inputs to the routine include a start date and an end date. The routine returns a table of records consisting of the following information: room identifier, room capacity, day (which is within the input date range [start date, end date]), and an array of the hours that the room is available on the specified day. The output is sorted in ascending order of room identifier and day, and the array entries are sorted in ascending order of hour. 
+Available hours exclude those during which sessions cannot be held. */
 CREATE OR REPLACE FUNCTION get_available_rooms(_start_date date, _end_date date) 
-RETURNS TABLE(room_id int, room_capacity int, day date, avail_hours int[]) AS $$
+RETURNS TABLE(room_id int, room_capacity int, avail_day date, avail_hours int[]) AS $$
+DECLARE
+	_room_curs CURSOR FOR (SELECT * FROM Rooms);
+	_avail_hours int[];
+	_room record;
+	_date date;
+	_hour int;
 BEGIN
-
+	OPEN _room_curs;
+	LOOP
+		FETCH _room_curs INTO _room;
+		EXIT WHEN NOT FOUND;
+		
+		_date := _start_date;
+		WHILE (_date <= _end_date) LOOP
+			_avail_hours := ARRAY[];
+			_hour := 9;
+			WHILE (_hour < 18) LOOP
+				CONTINUE WHEN (NOT is_session_legal(_hour, 1));
+				
+				IF (is_session_allowed(_room.rid, _date, _hour, 1)) THEN
+					array_append(_avail_hours, _hour);
+				END IF;
+				
+				_hour := _hour + 1;
+			END LOOP;
+			
+			IF (cardinality(_avail_hours) > 0) THEN
+				room_id := _room.rid;
+				room_capacity := _room.seating_capacity;
+				avail_day := _date;
+				avail_hours := _avail_hours;
+				RETURN NEXT;
+			END IF;
+			
+			_date := _date + interval '1 day';
+		END LOOP;
+	END LOOP;
+	CLOSE _room_curs;
 END;
 $$ LANGUAGE plpgsql;
 
