@@ -129,6 +129,8 @@ create table Managers
     foreign key (eid, job_type) references Employees (eid, job_type) on delete cascade
 );
 
+-- probably not needed?
+/*
 drop table if exists Part_time_instructors cascade;
 create table Part_time_instructors
 (
@@ -146,6 +148,7 @@ create table Full_time_instructors
         check ( job_type = 'full_time_instructor' ),
     foreign key (eid, job_type) references Instructors (eid, job_type) on delete cascade
 );
+*/
 
 drop table if exists Course_areas cascade;
 create table Course_areas

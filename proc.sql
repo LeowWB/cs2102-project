@@ -84,12 +84,14 @@ BEGIN;
 	END IF;
 	IF (category = 'instructor') THEN
 		INSERT INTO Instructors VALUES(eid, job_type);
+		/* insert back if have different tables again
 		IF (status = 'part_time') THEN
 			INSERT INTO Part_time_instructors VALUES(eid, job_type);
 		END IF;
 		IF (status = 'full_time') THEN
 			INSERT INTO Full_time_instructors VALUES(eid, job_type);
 		END IF;
+		*/
 		FOREACH area IN course_areas
 		LOOP
 			INSERT INTO Specializes VALUES(eid, area);
