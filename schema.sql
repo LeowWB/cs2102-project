@@ -479,3 +479,21 @@ create constraint trigger employee_in_part_or_full_time_t4
 after delete or update on Managers
 DEFERRABLE INITIALLY DEFERRED
 for each row execute function employee_is_administrator_or_instructor_or_manager_f();
+
+-- course session instructor must be specialized in that area
+create or replace function session_instructor_is_specialized_f()
+returns trigger as $$
+    declare
+        changedEid integer;
+    begin
+        if not exists(select 1 from Specializes s inner join Course_areas ca on ca.name = s.name inner join Courses c on ca.name = c.area where s.eid = NEW.instructor and c.course_id = NEW.course_id)  then
+            raise 'An instructor teaching a course session must be specialized in that area';
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists  session_instructor_is_specialized_t on Sessions;
+create trigger session_instructor_is_specialized_t
+before insert or update on Sessions
+for each row execute function session_instructor_is_specialized_f();

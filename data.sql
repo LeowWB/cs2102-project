@@ -100,6 +100,9 @@ insert into Course_areas VALUES
 INSERT INTO Courses VALUES
 (1, 'CS2102', 'db', 12, 'math');
 
+INSERT INTO Specializes VALUES
+(5, 'math');
+
 BEGIN TRANSACTION; -- for offerings
 INSERT INTO Offerings VALUES
 (1, '2020-05-31', 10000, 20, '2020-05-11', 2);
