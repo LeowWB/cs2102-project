@@ -47,7 +47,7 @@ create table Course_packages
 drop table if exists Buys cascade;
 create table Buys
 (
-    date                      date,
+    date                      timestamp,
     package_id                integer references Course_packages (package_id),
     number                    varchar(19) references Credit_cards (number),
     num_remaining_redemptions integer,
@@ -213,7 +213,7 @@ create table Sessions
 drop table if exists Registers cascade;
 create table Registers
 (
-    date        date,
+    date        timestamp,
     number      varchar(19),
     sid         integer,
     offering_id integer,
@@ -225,10 +225,10 @@ create table Registers
 drop table if exists Redeems cascade;
 create table Redeems
 (
-    buys_date   date,
+    buys_date   timestamp,
     package_id  integer,
     number      varchar(19),
-    date        date,
+    date        timestamp,
     sid         integer,
     offering_id integer references Offerings (offering_id) not null,
     primary key (buys_date, package_id, number, date, sid, offering_id),
@@ -240,7 +240,7 @@ drop table if exists Cancels cascade;
 create table Cancels
 (
     cust_id        integer,
-    date           date,
+    date           timestamp,
     sid            integer,
     offering_id integer references Offerings (offering_id) not null,
     refund_amt     integer,
