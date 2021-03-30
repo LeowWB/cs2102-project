@@ -4,55 +4,105 @@ CREATE OR REPLACE TYPE session_info AS (date date, start_time int, room_id int);
 CREATE OR REPLACE TYPE payment_method AS ENUM ('credit_card', 'course_package');
 
 CREATE OR REPLACE VIEW CourseOfferingSessions AS 
-	SELECT C.course_id AS course_id, title, description, duration, area, O.offering_id AS offering_id, launch_date, fees, target_number_registrations, registration_deadline, handler, sid, instructor, date, start_time, room
-	FROM (Sessions S JOIN Offerings O ON S.offering_id = O.offering_id) JOIN Courses C ON O.course_id = C.course_id;
-
-CREATE OR REPLACE FUNCTION get_course_duration(_course_id int) RETURNS int AS $$
+	SELECT C.course_id, C.title, C.description, C.duration, C.area, O.offering_id, O.launch_date, O.fees, O.target_number_registrations, O.registration_deadline, O.handler, S.sid, S.instructor, S.date, S.start_time, S.room
+	FROM Sessions S 
+	JOIN Offerings O ON S.offering_id = O.offering_id 
+	JOIN Courses C ON O.course_id = C.course_id;
+	
+CREATE OR REPLACE FUNCTION get_latest_credit_card(_cust_id int) 
+RETURNS Credit_cards AS $$
 BEGIN
 	RETURN QUERY
-	SELECT duration FROM Courses WHERE course_id = _course_id;
+	SELECT *
+	FROM Credit_cards
+	WHERE cust_id = _cust_id
+		AND from_date = (
+			SELECT max(from_date)
+			FROM Credit_cards
+			WHERE cust_id = _cust_id
+		);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_instructor_month_hours(_emp_id int, _year int, _month int) RETURNS int AS $$
+CREATE OR REPLACE FUNCTION get_latest_course_package(_cust_id int) 
+RETURNS Buys AS $$
 BEGIN
 	RETURN QUERY
-	SELECT sum(duration)
+	WITH BCC AS (
+		SELECT B.date, B.package_id, B.number, B.num_remaining_redemptions, CC.cust_id
+		FROM Buys B
+		JOIN Credit_cards CC ON B.number = CC.number
+	)
+	SELECT date, package_id, number, num_remaining_redemptions
+	FROM BCC
+	WHERE cust_id = _cust_id
+		AND date = (
+			SELECT max(date) 
+			FROM BCC 
+			WHERE cust_id = _cust_id
+		);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_course_duration(_course_id int) 
+RETURNS int AS $$
+BEGIN
+	RETURN QUERY
+	SELECT duration 
+	FROM Courses 
+	WHERE course_id = _course_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_instructor_month_hours(_emp_id int, _year int, _month int) 
+RETURNS int AS $$
+BEGIN
+	RETURN QUERY
+	SELECT COALESCE(SUM(duration), 0)
 	FROM CourseOfferingSessions
-	WHERE instructor = _emp_id AND EXTRACT(year FROM date) = _year AND EXTRACT(month FROM date) = _month;
+	WHERE instructor = _emp_id 
+		AND EXTRACT(year FROM date) = _year 
+		AND EXTRACT(month FROM date) = _month;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION do_ranges_overlap(_start1 int, _end1 int, _start2 int, _end2 int) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION do_ranges_overlap(_start1 int, _end1 int, _start2 int, _end2 int) 
+RETURNS BOOLEAN AS $$
 BEGIN
 	RETURN _end1 > _start2 AND _start1 < _end2;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION is_session_legal(_start_time int, _duration int) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION is_session_legal(_start_time int, _duration int) 
+RETURNS boolean AS $$
 BEGIN
 	RETURN _start_time >= 9 AND (_start_time + _duration) <= 18 AND NOT do_sessions_clash(_start_time, _duration, 12, 2);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION do_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION do_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) 
+RETURNS BOOLEAN AS $$
 BEGIN
 	RETURN do_ranges_overlap(_start1, _start1 + _duration1, _start2, _start2 + _duration2);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION is_session_allowed(_room_id int, _date date, _start_time int, _duration int) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION is_session_allowed(_room_id int, _date date, _start_time int, _duration int) 
+RETURNS boolean AS $$
 BEGIN
 	RETURN QUERY
 	SELECT NOT EXISTS(
 		SELECT 1
 		FROM CourseOfferingSessions
-		WHERE room = _room_id AND date = _date AND do_sessions_clash(_start_time, _duration, start_time, duration)
-	)
+		WHERE room = _room_id 
+			AND date = _date 
+			AND do_sessions_clash(_start_time, _duration, start_time, duration)
+	);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION do_instructor_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION do_instructor_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) 
+RETURNS boolean AS $$
 DECLARE
 	_break_time int;
 BEGIN
@@ -61,14 +111,99 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION is_instructor_session_allowed(_emp_id int, _date date, _start_time int, _duration int) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION is_instructor_session_allowed(_emp_id int, _date date, _start_time int, _duration int) 
+RETURNS boolean AS $$
 BEGIN
 	RETURN QUERY
 	SELECT NOT EXISTS(
 		SELECT 1
 		FROM CourseOfferingSessions
-		WHERE instructor = _emp_id AND date = _date AND do_instructor_sessions_clash(_start_time, _duration, start_time, duration)
-	)
+		WHERE instructor = _emp_id 
+			AND date = _date 
+			AND do_instructor_sessions_clash(_start_time, _duration, start_time, duration)
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_session_num_registrations(_offering_id int, _session_id int) 
+RETURNS int AS $$
+BEGIN
+	RETURN QUERY
+	SELECT
+	(
+		SELECT COUNT(*) 
+		FROM Registers 
+		WHERE offering_id = _offering_id AND sid = _session_id
+	) +
+	(
+		SELECT COUNT(*) 
+		FROM Redeems 
+		WHERE offering_id = _offering_id AND sid = _session_id
+	) -
+	(
+		SELECT COUNT(*) 
+		FROM Cancels 
+		WHERE offering_id = _offering_id AND sid = _session_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION is_registered_for_offering(_cust_id int, _offering_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT
+	((
+		SELECT COUNT(*) 
+		FROM Registers REG
+		JOIN Credit_cards CC ON REG.number = CC.number
+		WHERE CC.cust_id = _cust_id 
+			AND REG.offering_id = _offering_id
+	) +
+	(
+		SELECT COUNT(*) 
+		FROM Redeems RED
+		JOIN Credit_cards CC ON RED.number = CC.number
+		WHERE CC.cust_id = _cust_id 
+			AND RED.offering_id = _offering_id
+	) -
+	(
+		SELECT COUNT(*) 
+		FROM Cancels
+		WHERE cust_id = _cust_id 
+			AND offering_id = _offering_id
+	)) > 0;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION is_registered_for_session(_cust_id int, _offering_id int, _session_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT
+	((
+		SELECT COUNT(*) 
+		FROM Registers REG
+		JOIN Credit_cards CC ON REG.number = CC.number
+		WHERE CC.cust_id = _cust_id
+			AND REG.offering_id = _offering_id
+			AND REG.sid = _session_id
+	) +
+	(
+		SELECT COUNT(*) 
+		FROM Redeems RED
+		JOIN Credit_cards CC ON RED.number = CC.number
+		WHERE CC.cust_id = _cust_id
+			AND RED.offering_id = _offering_id
+			AND RED.sid = _session_id
+	) -
+	(
+		SELECT COUNT(*) 
+		FROM Cancels
+		WHERE cust_id = _cust_id
+			AND offering_id = _offering_id
+			AND sid = _session_id
+	)) > 0;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -138,18 +273,23 @@ CREATE OR REPLACE PROCEDURE remove_employee(_emp_id int, _depart_date date) AS $
 DECLARE
 	_job_type text;
 BEGIN
-	SELECT job_type INTO _job_type FROM Employees WHERE eid = _emp_id;
+	SELECT job_type INTO _job_type 
+	FROM Employees 
+	WHERE eid = _emp_id;
+	
 	IF (_job_type = 'administrator' AND EXISTS(
 		SELECT 1 
 		FROM Offerings 
-		WHERE handler = _emp_id AND registration_deadline > _depart_date
+		WHERE handler = _emp_id 
+			AND registration_deadline > _depart_date
 	)) THEN
 		RAISE EXCEPTION 'Administrator is handling some course offering where its registration deadline is after his departure date.';
 	END IF;
 	IF ((_job_type = 'full_time_instructor' OR _job_type = 'part_time_instructor') AND EXISTS(
 		SELECT 1
 		FROM Sessions
-		WHERE instructor = _emp_id AND date > _depart_date
+		WHERE instructor = _emp_id 
+			AND date > _depart_date
 	)) THEN
 		RAISE EXCEPTION 'Instructor is teaching some course session that starts after his departure date.';
 	END IF;
@@ -160,7 +300,10 @@ BEGIN
 	)) THEN
 		RAISE EXCEPTION 'Manager is managing some course area.';
 	END IF;
-	UPDATE Employees SET depart_date = _depart_date WHERE eid = _emp_id;
+	
+	UPDATE Employees 
+	SET depart_date = _depart_date
+	WHERE eid = _emp_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -175,7 +318,7 @@ BEGIN
 	RETURNING cust_id INTO _cust_id;
 	
 	INSERT INTO Credit_cards 
-	VALUES(_cc_num, _cvv, _cust_id, CURRENT_TIMESTAMP, _expiry_date);
+	VALUES(_cc_num, _cvv, _cust_id, LOCALTIMESTAMP, _expiry_date);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -184,7 +327,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE PROCEDURE update_credit_card(_cust_id int, _cc_num text, _expiry_date date, _cvv text) AS $$
 BEGIN
 	INSERT INTO Credit_cards
-	VALUES(_cc_num, _cvv, _cust_id, CURRENT_TIMESTAMP, _expiry_date);
+	VALUES(_cc_num, _cvv, _cust_id, LOCALTIMESTAMP, _expiry_date);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -204,9 +347,12 @@ CREATE OR REPLACE FUNCTION find_instructors(_course_id int, _session_date date, 
 RETURNS TABLE(emp_id int, name text) AS $$
 DECLARE
 	_emp_curs CURSOR FOR (
-		SELECT eid, I.name AS name, job_type
-		FROM (Instructors I JOIN Specializes S ON I.eid = S.eid) JOIN Courses C ON S.name = C.area
-		WHERE course_id = _course_id
+		SELECT I.eid, E.name, I.job_type
+		FROM Instructors I
+		JOIN Employees E ON I.eid = E.eid
+		JOIN Specializes SP ON I.eid = SP.eid 
+		JOIN Courses C ON SP.name = C.area
+		WHERE C.course_id = _course_id
 	);
 	_course_duration int;
 	_emp record;
@@ -222,7 +368,9 @@ BEGIN
 		FETCH _emp_curs INTO _emp;
 		EXIT WHEN NOT FOUND;
 		
-		CONTINUE WHEN (_emp.job_type = 'part_time_instructor' AND get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _session_date), EXTRACT(month FROM _session_date)) >= 30);
+		CONTINUE WHEN (_emp.job_type = 'part_time_instructor' 
+			AND get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _session_date), EXTRACT(month FROM _session_date)) >= 30
+		);
 		
 		IF (is_instructor_session_allowed(_emp.eid, _session_date, _session_start_time, _course_duration)) THEN
 			emp_id := _emp.eid;
@@ -242,8 +390,10 @@ RETURNS TABLE(emp_id int, name text, month_hours int, avail_day date, avail_hour
 DECLARE
 	_emp_curs CURSOR FOR (
 		SELECT eid, I.name AS name, job_type
-		FROM (Instructors I JOIN Specializes S ON I.eid = S.eid) JOIN Courses C ON S.name = C.area
-		WHERE course_id = _course_id
+		FROM Instructors I 
+		JOIN Specializes SP ON I.eid = SP.eid 
+		JOIN Courses C ON SP.name = C.area
+		WHERE C.course_id = _course_id
 		ORDER BY eid
 	);
 	_course_duration int;
@@ -413,15 +563,75 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION get_available_course_sessions(_offering_id int) 
 RETURNS TABLE(session_date date, session_start_time int, instructor_name text, num_rem_seats int) AS $$
 BEGIN
-	
+	RETURN QUERY
+	SELECT CS.date, CS.start_time, E.name, _num_rem_seats
+	FROM CourseOfferingSessions CS 
+	JOIN Employees E ON CS.instructor = E.eid
+	JOIN Rooms R ON CS.room = R.rid
+	WHERE CS.offering_id = _offering_id 
+		AND CS.registration_deadline >= CURRENT_DATE
+		AND (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid)) AS _num_rem_seats > 0
+	ORDER BY CS.date, CS.start_time;
 END;
 $$ LANGUAGE plpgsql;
 
 --17
 /* This routine is used when a customer requests to register for a session in a course offering. The inputs to the routine include the following: customer identifier, course offering identifier, session number, and payment method (credit card or redemption from active package). If the registration transaction is valid, this routine will process the registration with the necessary updates (e.g., payment/redemption). */
-CREATE OR REPLACE PROCEDURE register_session(_cust_id int, _offering_id int, _session_num int, _pay_by payment_method) AS $$
+CREATE OR REPLACE PROCEDURE register_session(_cust_id int, _offering_id int, _session_id int, _pay_by payment_method) AS $$
+DECLARE
+	_reg_deadline date;
+	_seating_capacity int;
+	_credit_card record;
+	_buys_package record;
 BEGIN
-
+	SELECT registration_deadline INTO _reg_deadline
+	FROM Offerings 
+	WHERE offering_id = _offering_id;
+	
+	SELECT R.seating_capacity INTO _seating_capacity
+	FROM Sessions S
+	JOIN Rooms R ON S.room = R.rid
+	WHERE S.offering_id = _offering_id
+		AND S.sid = _session_id;
+		
+	_credit_card := get_latest_credit_card(_cust_id);
+	_buys_package := get_latest_course_package(_cust_id);
+	
+	IF (_reg_deadline < CURRENT_DATE) THEN
+		RAISE EXCEPTION 'Registration deadline is over.';
+	END IF;
+	IF (is_registered_for_offering(_cust_id, _offering_id)) THEN
+		RAISE EXCEPTION 'Already registered for specified course offering.';
+	END IF;
+	IF (get_session_num_registrations(_offering_id, _session_id) >= _seating_capacity) THEN
+		RAISE EXCEPTION 'No available seats.';
+	END IF;
+	
+	IF (_pay_by = 'credit_card') THEN
+		IF (_credit_card.expiry_date < CURRENT_DATE) THEN
+			RAISE EXCEPTION 'Credit card has expired.';
+		END IF;
+		
+		INSERT INTO Registers
+		VALUES(LOCALTIMESTAMP, _credit_card.number, _session_id, _offering_id);
+	END IF;
+	IF (_pay_by = 'course_package') THEN
+		IF (_buys_package.package_id IS NULL) THEN
+			RAISE EXCEPTION 'No course package bought.';
+		END IF;
+		IF (_buys_package.num_remaining_redemptions <= 0) THEN
+			RAISE EXCEPTION 'Course package fully redeemed.';
+		END IF;
+		
+		INSERT INTO Redeems
+		VALUES(_buys_package.date, _buys_package.package_id, _buys_package.number, LOCALTIMESTAMP, _session_id, _offering_id);
+		
+		UPDATE Buys
+		SET num_remaining_redemptions = num_remaining_redemptions - 1
+		WHERE date = _buys_package.date
+			AND package_id = _buys_package.package_id
+			AND number = _buys_package.number;
+	END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -430,13 +640,17 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION get_my_registrations(_cust_id int) 
 RETURNS TABLE(course_name text, course_fees int, session_date date, session_start_time int, session_duration int, instructor_name text) AS $$
 BEGIN
-
+	RETURN QUERY
+	SELECT CS.title, CS.fees, CS.date, CS.start_time, CS.duration, E.name
+	FROM CourseOfferingSessions CS JOIN Employees E ON CS.instructor = E.eid
+	WHERE (CS.date > CURRENT_DATE OR (CS.date = CURRENT_DATE AND CS.start_time + CS.duration > EXTRACT(HOUR FROM LOCALTIME))) 
+		AND is_registered_for_session(_cust_id, CS.offering_id, CS.sid);
 END;
 $$ LANGUAGE plpgsql;
 
 --19
 /* This routine is used when a customer requests to change a registered course session to another session. The inputs to the routine include the following: customer identifier, course offering identifier, and new session number. If the update request is valid and there is an available seat in the new session, the routine will process the request with the necessary updates. */
-CREATE OR REPLACE PROCEDURE update_course_session(_cust_id int, _offering_id int, _new_session_num int) AS $$
+CREATE OR REPLACE PROCEDURE update_course_session(_cust_id int, _offering_id int, _new_session_id int) AS $$
 BEGIN
 
 END;
@@ -452,7 +666,7 @@ $$ LANGUAGE plpgsql;
 
 --21
 /* This routine is used to change the instructor for a course session. The inputs to the routine include the following: course offering identifier, session number, and identifier of the new instructor. If the course session has not yet started and the update request is valid, the routine will process the request with the necessary updates. */
-CREATE OR REPLACE PROCEDURE update_instructor(_offering_id int, _session_num int, _new_instructor_id int) AS $$
+CREATE OR REPLACE PROCEDURE update_instructor(_offering_id int, _session_id int, _new_instructor_id int) AS $$
 BEGIN
 
 END;
@@ -460,7 +674,7 @@ $$ LANGUAGE plpgsql;
 
 --22
 /* This routine is used to change the room for a course session. The inputs to the routine include the following: course offering identifier, session number, and identifier of the new room. If the course session has not yet started and the update request is valid, the routine will process the request with the necessary updates. Note that update request should not be performed if the number of registrations for the session exceeds the seating capacity of the new room. */
-CREATE OR REPLACE PROCEDURE update_room(_offering_id int, _session_num int, _new_room_id int) AS $$
+CREATE OR REPLACE PROCEDURE update_room(_offering_id int, _session_id int, _new_room_id int) AS $$
 BEGIN
 
 END;
@@ -468,7 +682,7 @@ $$ LANGUAGE plpgsql;
 
 --23
 /* This routine is used to remove a course session. The inputs to the routine include the following: course offering identifier and session number. If the course session has not yet started and the request is valid, the routine will process the request with the necessary updates. The request must not be performed if there is at least one registration for the session. Note that the resultant seating capacity of the course offering could fall below the course offering’s target number of registrations, which is allowed. */
-CREATE OR REPLACE PROCEDURE remove_session(_offering_id int, _session_num int) AS $$
+CREATE OR REPLACE PROCEDURE remove_session(_offering_id int, _session_id int) AS $$
 BEGIN
 
 END;
@@ -476,7 +690,7 @@ $$ LANGUAGE plpgsql;
 
 --24
 /* This routine is used to add a new session to a course offering. The inputs to the routine include the following: course offering identifier, new session number, new session day, new session start hour, instructor identifier for new session, and room identifier for new session. If the course offering’s registration deadline has not passed and the the addition request is valid, the routine will process the request with the necessary updates. */
-CREATE OR REPLACE PROCEDURE add_session(_offering_id int, _session_num int, _date date, _start_time int, _instructor_id int, _room_id int) AS $$
+CREATE OR REPLACE PROCEDURE add_session(_offering_id int, _session_id int, _date date, _start_time int, _instructor_id int, _room_id int) AS $$
 BEGIN
 
 END;
