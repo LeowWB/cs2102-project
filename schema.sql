@@ -178,6 +178,7 @@ create table Courses
 drop table if exists Offerings cascade;
 create table Offerings
 (
+	offering_id					integer primary key,
     course_id                   integer references Courses (course_id),
     launch_date                 date,
     fees                        int,
@@ -188,7 +189,7 @@ create table Offerings
     -- check target_n_r < seating capacity
     -- start and end date is derived
     -- check end date - deadline >= 10
-    primary key (course_id, launch_date)
+    unique (course_id, launch_date)
 );
 
 -- assume all sessions last exactly one hour.
@@ -198,19 +199,16 @@ drop table if exists Sessions cascade;
 create table Sessions
 (
     sid         integer,
-    course_id   integer,
-    launch_date date,
+    offering_id integer references Offerings (offering_id) not null,
     -- seating capacity is derived from room
     instructor  integer references Instructors (eid) not null,
     date        date,
     start_time  integer
         check ((start_time >= 9 and start_time < 12) or (start_time >= 14 and start_time < 18)),
     room        integer references Rooms (rid) not null,
-    foreign key (course_id, launch_date) references Offerings (course_id, launch_date),
-    unique (course_id, launch_date, date, start_time),
-    primary key (sid, course_id, launch_date)
+    unique (offering_id, date, start_time),
+    primary key (sid, offering_id)
 );
-
 
 drop table if exists Registers cascade;
 create table Registers
@@ -218,11 +216,10 @@ create table Registers
     date        date,
     number      varchar(19),
     sid         integer,
-    course_id   integer,
-    launch_date date,
-    primary key (date, number, sid, course_id, launch_date),
+    offering_id integer,
+    primary key (date, number, sid, offering_id),
     foreign key (number) references Credit_cards (number),
-    foreign key (sid, course_id, launch_date) references Sessions (sid, course_id, launch_date)
+    foreign key (sid, offering_id) references Sessions (sid, offering_id)
 );
 
 drop table if exists Redeems cascade;
@@ -233,11 +230,10 @@ create table Redeems
     number      varchar(19),
     date        date,
     sid         integer,
-    course_id   integer,
-    launch_date date,
-    primary key (buys_date, package_id, number, date, sid, course_id, launch_date),
+    offering_id integer references Offerings (offering_id) not null,
+    primary key (buys_date, package_id, number, date, sid, offering_id),
     foreign key (buys_date, package_id, number) references Buys (date, package_id, number),
-    foreign key (sid, course_id, launch_date) references Sessions (sid, course_id, launch_date)
+    foreign key (sid, offering_id) references Sessions (sid, offering_id)
 );
 
 drop table if exists Cancels cascade;
@@ -246,13 +242,12 @@ create table Cancels
     cust_id        integer,
     date           date,
     sid            integer,
-    launch_date    date,
-    course_id      integer,
+    offering_id integer references Offerings (offering_id) not null,
     refund_amt     integer,
     package_credit integer,
-    primary key (cust_id, date, sid, launch_date, course_id),
+    primary key (cust_id, date, sid, offering_id),
     foreign key (cust_id) references Customers (cust_id),
-    foreign key (sid, launch_date, course_id) references Sessions (sid, launch_date, course_id)
+    foreign key (sid, offering_id) references Sessions (sid, offering_id)
 );
 
 drop table if exists Pay_slips cascade;

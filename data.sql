@@ -105,9 +105,9 @@ INSERT INTO Specializes VALUES
 
 BEGIN TRANSACTION; -- for offerings
 INSERT INTO Offerings VALUES
-(1, '2020-05-31', 10000, 20, '2020-05-11', 2);
+(1, 1, '2020-05-31', 10000, 20, '2020-05-11', 2);
 
 INSERT INTO Sessions VALUES
-(1, 1, '2020-05-31',5, '2020-06-01', 9, 5 );
+(1, 1, 5, '2020-06-01', 9, 5 );
 COMMIT; -- for offerings
 
