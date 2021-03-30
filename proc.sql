@@ -1,7 +1,11 @@
 CREATE OR REPLACE TYPE employee_status AS ENUM ('full_time', 'part_time');
 CREATE OR REPLACE TYPE employee_category AS ENUM ('administrator', 'manager', 'instructor');
-CREATE OR REPLACE TYPE session_info AS (date date, start_hour int, room_id int);
+CREATE OR REPLACE TYPE session_info AS (date date, start_time int, room_id int);
 CREATE OR REPLACE TYPE payment_method AS ENUM ('credit_card', 'course_package');
+
+CREATE OR REPLACE VIEW CourseOfferingSessions AS 
+	SELECT C.course_id AS course_id, title, description, duration, area, O.offering_id AS offering_id, launch_date, fees, target_number_registrations, registration_deadline, handler, sid, instructor, date, start_time, room
+	FROM (Sessions S JOIN Offerings O ON S.offering_id = O.offering_id) JOIN Courses C ON O.course_id = C.course_id;
 
 CREATE OR REPLACE FUNCTION get_course_duration(_course_id int) RETURNS int AS $$
 BEGIN
@@ -14,7 +18,7 @@ CREATE OR REPLACE FUNCTION get_instructor_month_hours(_emp_id int, _year int, _m
 BEGIN
 	RETURN QUERY
 	SELECT sum(duration)
-	FROM Sessions S JOIN Courses C ON S.course_id = C.course_id
+	FROM CourseOfferingSessions
 	WHERE instructor = _emp_id AND EXTRACT(year FROM date) = _year AND EXTRACT(month FROM date) = _month;
 END;
 $$ LANGUAGE plpgsql;
@@ -25,9 +29,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION is_session_legal(_start_hour int, _duration int) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION is_session_legal(_start_time int, _duration int) RETURNS boolean AS $$
 BEGIN
-	RETURN _start_hour >= 9 AND (_start_hour + _duration) <= 18 AND NOT do_sessions_clash(_start_hour, _duration, 12, 2);
+	RETURN _start_time >= 9 AND (_start_time + _duration) <= 18 AND NOT do_sessions_clash(_start_time, _duration, 12, 2);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -37,13 +41,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION is_session_allowed(_room_id int, _date date, _start_hour int, _duration int) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION is_session_allowed(_room_id int, _date date, _start_time int, _duration int) RETURNS boolean AS $$
 BEGIN
 	RETURN QUERY
 	SELECT NOT EXISTS(
 		SELECT 1
-		FROM Sessions S JOIN Courses C ON S.course_id = C.course_id
-		WHERE room = _room_id AND date = _date AND do_sessions_clash(_start_hour, _duration, start_time, duration)
+		FROM CourseOfferingSessions
+		WHERE room = _room_id AND date = _date AND do_sessions_clash(_start_time, _duration, start_time, duration)
 	)
 END;
 $$ LANGUAGE plpgsql;
@@ -57,13 +61,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION is_instructor_session_allowed(_emp_id int, _date date, _start_hour int, _duration int) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION is_instructor_session_allowed(_emp_id int, _date date, _start_time int, _duration int) RETURNS boolean AS $$
 BEGIN
 	RETURN QUERY
 	SELECT NOT EXISTS(
 		SELECT 1
-		FROM Sessions S JOIN Courses C ON S.course_id = C.course_id
-		WHERE instructor = _emp_id AND date = _date AND do_instructor_sessions_clash(_start_hour, _duration, start_time, duration)
+		FROM CourseOfferingSessions
+		WHERE instructor = _emp_id AND date = _date AND do_instructor_sessions_clash(_start_time, _duration, start_time, duration)
 	)
 END;
 $$ LANGUAGE plpgsql;
@@ -196,7 +200,7 @@ $$ LANGUAGE plpgsql;
 --6
 /* This routine is used to find all the instructors who could be assigned to teach a course session. The inputs to the routine include the following: course identifier, session date, and session start hour. The routine returns a table of records consisting of employee identifier and name. 
 Returns empty table if the given session is illegal. */
-CREATE OR REPLACE FUNCTION find_instructors(_course_id int, _session_date date, _session_start_hour int) 
+CREATE OR REPLACE FUNCTION find_instructors(_course_id int, _session_date date, _session_start_time int) 
 RETURNS TABLE(emp_id int, name text) AS $$
 DECLARE
 	_emp_curs CURSOR FOR (
@@ -209,7 +213,7 @@ DECLARE
 BEGIN
 	_course_duration := get_course_duration(_course_id);
 	
-	IF (NOT is_session_legal(_session_start_hour, _course_duration)) THEN
+	IF (NOT is_session_legal(_session_start_time, _course_duration)) THEN
 		RETURN;
 	END IF;
 
@@ -220,7 +224,7 @@ BEGIN
 		
 		CONTINUE WHEN (_emp.job_type = 'part_time_instructor' AND get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _session_date), EXTRACT(month FROM _session_date)) >= 30);
 		
-		IF (is_instructor_session_allowed(_emp.eid, _session_date, _session_start_hour, _course_duration)) THEN
+		IF (is_instructor_session_allowed(_emp.eid, _session_date, _session_start_time, _course_duration)) THEN
 			emp_id := _emp.eid;
 			name := _emp.name;
 			RETURN NEXT;
@@ -293,17 +297,17 @@ $$ LANGUAGE plpgsql;
 --8
 /* This routine is used to find all the rooms that could be used for a course session. The inputs to the routine include the following: session date, session start hour, and session duration. The routine returns a table of room identifiers. 
 Returns empty table if the given session is illegal. */
-CREATE OR REPLACE FUNCTION find_rooms(_session_date date, _session_start_hour int, _session_duration int) 
+CREATE OR REPLACE FUNCTION find_rooms(_session_date date, _session_start_time int, _session_duration int) 
 RETURNS TABLE(room_id int) AS $$
 BEGIN
-	IF (NOT is_session_legal(_session_start_hour, _course_duration)) THEN
+	IF (NOT is_session_legal(_session_start_time, _course_duration)) THEN
 		RETURN;
 	END IF;
 	
 	RETURN QUERY
 	SELECT rid
 	FROM Rooms
-	WHERE is_session_allowed(rid, _session_date, _session_start_hour, _session_duration);
+	WHERE is_session_allowed(rid, _session_date, _session_start_time, _session_duration);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -407,9 +411,9 @@ $$ LANGUAGE plpgsql;
 --16
 /* This routine is used to retrieve all the available sessions for a course offering that could be registered. The input to the routine is a course offering identifier. The routine returns a table of records with the following information for each available session: session date, session start hour, instructor name, and number of remaining seats for that session. The output is sorted in ascending order of session date and start hour. */
 CREATE OR REPLACE FUNCTION get_available_course_sessions(_offering_id int) 
-RETURNS TABLE(session_date date, session_start_hour int, instructor_name text, num_rem_seats int) AS $$
+RETURNS TABLE(session_date date, session_start_time int, instructor_name text, num_rem_seats int) AS $$
 BEGIN
-
+	
 END;
 $$ LANGUAGE plpgsql;
 
@@ -424,7 +428,7 @@ $$ LANGUAGE plpgsql;
 --18
 /* This routine is used when a customer requests to view his/her active course registrations (i.e, registrations for course sessions that have not ended). The input to the routine is a customer identifier. The routine returns a table of records with the following information for each active registration session: course name, course fees, session date, session start hour, session duration, and instructor name. The output is sorted in ascending order of session date and session start hour. */
 CREATE OR REPLACE FUNCTION get_my_registrations(_cust_id int) 
-RETURNS TABLE(course_name text, course_fees int, session_date date, session_start_hour int, session_duration int, instructor_name text) AS $$
+RETURNS TABLE(course_name text, course_fees int, session_date date, session_start_time int, session_duration int, instructor_name text) AS $$
 BEGIN
 
 END;
@@ -472,7 +476,7 @@ $$ LANGUAGE plpgsql;
 
 --24
 /* This routine is used to add a new session to a course offering. The inputs to the routine include the following: course offering identifier, new session number, new session day, new session start hour, instructor identifier for new session, and room identifier for new session. If the course offering’s registration deadline has not passed and the the addition request is valid, the routine will process the request with the necessary updates. */
-CREATE OR REPLACE PROCEDURE add_session(_offering_id int, _session_num int, _date date, _start_hour int, _instructor_id int, _room_id int) AS $$
+CREATE OR REPLACE PROCEDURE add_session(_offering_id int, _session_num int, _date date, _start_time int, _instructor_id int, _room_id int) AS $$
 BEGIN
 
 END;
