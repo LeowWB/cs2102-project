@@ -268,14 +268,22 @@ create table Pay_slips
 
 -- Each course offering consists of one or more sessions
 
-create or replace function each_offering_at_least_one_session_f1()
+create or replace function each_offering_at_least_one_session_f()
 returns trigger as $$
     declare
         num_sessions integer;
+        changed_offering_id integer;
     begin
+        if (tg_op = 'INSERT') then
+            -- insert into offerings
+            changed_offering_id := NEW.offering_id;
+        else
+            -- delete from sessions
+            changed_offering_id := OLD.offering_id;
+        end if;
         select count(*) into num_sessions
         from Sessions
-        where course_id = NEW.course_id and launch_date = NEW.launch_date;
+        where offering_id = changed_offering_id;
         if num_sessions = 0 then
             raise 'Each course offering consists of one or more sessions';
         end if;
@@ -283,31 +291,16 @@ returns trigger as $$
     end;
 $$ language plpgsql;
 
-create or replace function each_offering_at_least_one_session_f2()
-returns trigger as $$
-    declare
-        num_sessions integer;
-    begin
-        select count(*) into num_sessions
-        from Sessions
-        where course_id = OLD.course_id and launch_date = OLD.launch_date;
-        if num_sessions <= 1 then
-            raise 'Each course offering consists of one or more sessions';
-        end if;
-        return OLD;
-    end;
-$$ language plpgsql;
-
 drop trigger if exists each_offering_at_least_one_session_t1 on Offerings;
 create constraint trigger each_offering_at_least_one_session_t1
 after insert on Offerings
 DEFERRABLE INITIALLY DEFERRED
-for each row execute function each_offering_at_least_one_session_f1();
+for each row execute function each_offering_at_least_one_session_f();
 
 drop trigger if exists each_offering_at_least_one_session_t2 on Sessions;
 create trigger each_offering_at_least_one_session_t2
 before delete on Sessions
-for each row execute function each_offering_at_least_one_session_f2();
+for each row execute function each_offering_at_least_one_session_f();
 
 --each session is on a specific weekday (Monday to Friday)
 
@@ -338,7 +331,7 @@ returns trigger as $$
     begin
         select min(date) into start_date
         from Sessions
-        where course_id = NEW.course_id and launch_date = NEW.launch_date;
+        where offering_id = NEW.offering_id;
         if start_date - 10 < NEW.registration_deadline then
             raise 'The registration deadline for a course offering must be at least 10 days before its start date.';
         end if;
@@ -354,11 +347,11 @@ returns trigger as $$
     begin
         select min(date) into start_date
         from Sessions
-        where course_id = NEW.course_id and launch_date = NEW.launch_date;
+        where offering_id = NEW.offering_id;
 
         select registration_deadline into reg_deadline
         from Offerings
-        where course_id = NEW.course_id and launch_date = NEW.launch_date;
+        where offering_id = NEW.offering_id;
 
         if start_date - 10 < reg_deadline then
             raise 'The registration deadline for a course offering must be at least 10 days before its start date.';
@@ -482,7 +475,7 @@ returns trigger as $$
     declare
         changedEid integer;
     begin
-        if not exists(select 1 from Specializes s inner join Course_areas ca on ca.name = s.name inner join Courses c on ca.name = c.area where s.eid = NEW.instructor and c.course_id = NEW.course_id)  then
+        if not exists(select 1 from Specializes s inner join Course_areas ca on ca.name = s.name inner join Courses c on ca.name = c.area inner join Offerings O on c.course_id = O.course_id where s.eid = NEW.instructor and O.offering_id = NEW.offering_id)  then
             raise 'An instructor teaching a course session must be specialized in that area';
         end if;
         return NEW;
@@ -498,7 +491,7 @@ for each row execute function session_instructor_is_specialized_f();
 create or replace function instructor_no_consecutive_sessions_f()
 returns trigger as $$
     begin
-        if exists(select 1 from Sessions S inner join Courses C on S.course_id = C.course_id where NEW.instructor = S.instructor and S.date = NEW.date and NEW.start_time = S.start_time + C.duration)  then
+        if exists(select 1 from Sessions S inner join Offerings O on S.offering_id = O.offering_id inner join Courses C on O.course_id = C.course_id where NEW.instructor = S.instructor and S.date = NEW.date and NEW.start_time = S.start_time + C.duration)  then
             raise 'An instructor cannot teach two courses consecutively';
         end if;
         return NEW;
@@ -514,7 +507,7 @@ for each row execute function instructor_no_consecutive_sessions_f();
 create or replace function instructor_max_30h_per_month_f()
 returns trigger as $$
     begin
-        if (select sum(C.duration) from Sessions S inner join Courses C on S.course_id = C.course_id where S.instructor = NEW.instructor and (extract(year from NEW.date)) = (extract(year from S.date)) and (extract(month from NEW.date)) = (extract(month from S.date))) > 30  then
+        if (select sum(C.duration) from Sessions S inner join Offerings O on S.offering_id = O.offering_id inner join Courses C on O.course_id = C.course_id where S.instructor = NEW.instructor and (extract(year from NEW.date)) = (extract(year from S.date)) and (extract(month from NEW.date)) = (extract(month from S.date))) > 30  then
             raise 'An instructor cannot teach more than 30 hours for each month';
         end if;
         return NEW;
@@ -532,8 +525,8 @@ returns trigger as $$
     declare
         new_duration integer;
     begin
-        select duration from Courses where course_id = NEW.course_id into new_duration;
-        if exists(select 1 from Sessions S inner join Courses C on S.course_id = C.course_id where NEW.instructor = S.instructor and S.date = NEW.date and LEAST(C.duration + S.start_time, NEW.start_time + new_duration) > GREATEST(S.start_time, NEW.start_time))  then
+        select duration from Courses C join Offerings O2 on C.course_id = O2.course_id where O2.offering_id = NEW.offering_id into new_duration;
+        if exists(select 1 from Sessions S inner join Offerings O on S.offering_id = O.offering_id inner join Courses C on O.course_id = C.course_id where NEW.instructor = S.instructor and S.date = NEW.date and LEAST(C.duration + S.start_time, NEW.start_time + new_duration) > GREATEST(S.start_time, NEW.start_time))  then
             raise 'An instructor cannot teach two courses simultaneously';
         end if;
         return NEW;
