@@ -369,6 +369,41 @@ create trigger sessions_end_by_six_t2
 before insert or update on Courses
 for each row execute function sessions_end_by_six_f2();
 
+-- Each room can be used to conduct at most one course session at any time.
+
+create or replace function one_session_per_room_at_a_time_f()
+returns trigger as $$
+    declare
+        has_clash integer;
+    begin
+        select 1 into has_clash
+        from Sessions s1
+        where (
+            s1.room = NEW.room and
+            s1.date = NEW.date and
+            (
+                s1.sid <> NEW.sid or
+                s1.offering_id <> NEW.offering_id
+            ) and
+            (
+                s1.start_time < NEW.end_time or
+                NEW.start_time < s1.end_time
+            )
+        );
+        if has_clash = 1 then
+            raise 'Each room can be used to conduct at most one course session at any time.';
+            return NULL;
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists one_session_per_room_at_a_time_t on Sessions;
+create trigger one_session_per_room_at_a_time_t
+before insert or update on Sessions
+for each row execute function one_session_per_room_at_a_time_f();
+
+
 --The registration deadline for a course offering must be at least 10 days before its start date.
 
 create or replace function registration_ten_days_before_f1()
