@@ -403,6 +403,36 @@ create trigger one_session_per_room_at_a_time_t
 before insert or update on Sessions
 for each row execute function one_session_per_room_at_a_time_f();
 
+-- Each customer can have at most one active or partially active package.
+
+create or replace function one_active_package_per_customer_f()
+returns trigger as $$
+    declare
+        has_other_package integer;
+    begin
+        select 1 into has_other_package
+        from Buys
+        where (
+            number = NEW.number and
+            num_remaining_redemptions * NEW.num_remaining_redemptions <> 0 and
+            (
+                date <> NEW.date or
+                package_id <> NEW.package_id
+            )
+        );
+        if has_other_package = 1 then
+            raise 'Each customer can have at most one active or partially active package.';
+            return NULL;
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists one_active_package_per_customer_t on Sessions;
+create trigger one_active_package_per_customer_t
+before insert or update on Buys
+for each row execute function one_active_package_per_customer_f();
+
 
 --The registration deadline for a course offering must be at least 10 days before its start date.
 
