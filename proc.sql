@@ -13,14 +13,17 @@ CREATE OR REPLACE FUNCTION get_latest_credit_card(_cust_id int)
 RETURNS Credit_cards AS $$
 BEGIN
 	RETURN QUERY
+	WITH CustCC AS (
+		SELECT *
+		FROM Credit_cards
+		WHERE cust_id = _cust_id
+	)
 	SELECT *
-	FROM Credit_cards
-	WHERE cust_id = _cust_id
-		AND from_date = (
-			SELECT max(from_date)
-			FROM Credit_cards
-			WHERE cust_id = _cust_id
-		);
+	FROM CustCC
+	WHERE from_date = (
+		SELECT max(from_date)
+		FROM CustCC
+	);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -28,19 +31,18 @@ CREATE OR REPLACE FUNCTION get_latest_course_package(_cust_id int)
 RETURNS Buys AS $$
 BEGIN
 	RETURN QUERY
-	WITH BCC AS (
+	WITH CustBCC AS (
 		SELECT B.date, B.package_id, B.number, B.num_remaining_redemptions, CC.cust_id
 		FROM Buys B
 		JOIN Credit_cards CC ON B.number = CC.number
+		WHERE cust_id = _cust_id
 	)
 	SELECT date, package_id, number, num_remaining_redemptions
-	FROM BCC
-	WHERE cust_id = _cust_id
-		AND date = (
-			SELECT max(date) 
-			FROM BCC 
-			WHERE cust_id = _cust_id
-		);
+	FROM CustBCC
+	WHERE date = (
+		SELECT max(date) 
+		FROM CustBCC
+	);
 END;
 $$ LANGUAGE plpgsql;
 
