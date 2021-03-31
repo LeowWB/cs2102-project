@@ -46,13 +46,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_course_duration(_course_id int) 
+CREATE OR REPLACE FUNCTION get_seating_capacity(_offering_id int, _session_id int)
 RETURNS int AS $$
 BEGIN
 	RETURN QUERY
-	SELECT duration 
-	FROM Courses 
-	WHERE course_id = _course_id;
+	SELECT R.seating_capacity
+	FROM Sessions S
+	JOIN Rooms R ON S.room = R.rid
+	WHERE S.offering_id = _offering_id
+		AND S.sid = _session_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -68,8 +70,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION get_session_timestamp(_offering_id int, _session_id int) 
+RETURNS timestamp AS $$
+BEGIN
+	RETURN QUERY
+	SELECT date + interval (start_time::text || ' hour')
+	FROM Sessions
+	WHERE offering_id = _offering_id
+		AND sid = _session_id
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION do_ranges_overlap(_start1 int, _end1 int, _start2 int, _end2 int) 
-RETURNS BOOLEAN AS $$
+RETURNS boolean AS $$
 BEGIN
 	RETURN _end1 > _start2 AND _start1 < _end2;
 END;
@@ -83,7 +96,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION do_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) 
-RETURNS BOOLEAN AS $$
+RETURNS boolean AS $$
 BEGIN
 	RETURN do_ranges_overlap(_start1, _start1 + _duration1, _start2, _start2 + _duration2);
 END;
@@ -150,6 +163,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION is_session_available(_offering_id int, _session_id int)
+RETURNS boolean AS $$
+BEGIN
+	RETURN (get_seating_capacity(_offering_id, _session_id) - get_session_num_registrations(_offering_id, _session_id) > 0);
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION is_registered_for_offering(_cust_id int, _offering_id int) 
 RETURNS boolean AS $$
 BEGIN
@@ -206,6 +226,66 @@ BEGIN
 			AND offering_id = _offering_id
 			AND sid = _session_id
 	)) > 0;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_registered_session(_cust_id int, _offering_id int, OUT session_id int, OUT paid_by payment_method, OUT paid_date timestamp, OUT cc_num text, OUT course_package_id int, OUT package_buys_date timestamp)
+RETURNS record AS $$
+DECLARE
+	registers_r record;
+	redeems_r record;
+BEGIN
+	IF (NOT is_registered_for_offering(_cust_id, _offering_id)) THEN
+		RETURN;
+	END IF;
+	
+	WITH RegCC AS (
+		SELECT REG.date, CC.number, REG.sid, REG.offering_id
+		FROM Registers REG
+		JOIN Credit_cards CC ON REG.number = CC.number
+		WHERE CC.cust_id = _cust_id
+			AND REG.offering_id = _offering_id
+	)
+	SELECT (sid, date, number) INTO registers_r
+	FROM RegCC
+	WHERE date = (
+		SELECT max(date)
+		FROM RegCC
+	);
+	
+	WITH RedCC AS (
+		SELECT RED.buys_date, RED.package_id, CC.number, RED.date, RED.sid, RED.offering_id
+		FROM Redeems RED INTO redeems_sid
+		JOIN Credit_cards CC ON RED.number = CC.number
+		WHERE CC.cust_id = _cust_id
+			AND RED.offering_id = _offering_id;
+	)
+	SELECT (sid, date, number, package_id, buys_date) INTO redeems_r
+	FROM RedCC
+	WHERE date = (
+		SELECT max(date)
+		FROM RedCC
+	);
+	
+	IF (registers_r IS NULL) THEN
+		paid_by := 'course_package';
+	ELSIF (redeems_r IS NULL) THEN
+		paid_by := 'credit_card';
+	ELSIF (registers_r.date > redeems_r.date) THEN
+		paid_by := 'credit_card';
+	ELSE
+		paid_by := 'course_package';
+	END IF;
+	IF (paid_by = 'credit_card') THEN
+		session_id := registers_r.sid;
+		paid_date := registers_r.date;
+		cc_num := registers_r.number;
+	ELSE
+		session_id := redeems_r.sid;
+		paid_date := redeems_r.date;
+		cc_num := redeems_r.number;
+		course_package_id := redeems_r.package_id;
+		package_buys_date := redeems_r.buys_date;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -359,7 +439,9 @@ DECLARE
 	_course_duration int;
 	_emp record;
 BEGIN
-	_course_duration := get_course_duration(_course_id);
+	SELECT duration INTO _course_duration
+	FROM Courses 
+	WHERE course_id = _course_id;
 	
 	IF (NOT is_session_legal(_session_start_time, _course_duration)) THEN
 		RETURN;
@@ -405,7 +487,9 @@ DECLARE
 	_date date;
 	_hour int;
 BEGIN
-	_course_duration := get_course_duration(_course_id);
+	SELECT duration INTO _course_duration
+	FROM Courses 
+	WHERE course_id = _course_id;
 
 	OPEN _emp_curs;
 	LOOP
@@ -581,35 +665,27 @@ $$ LANGUAGE plpgsql;
 /* This routine is used when a customer requests to register for a session in a course offering. The inputs to the routine include the following: customer identifier, course offering identifier, session number, and payment method (credit card or redemption from active package). If the registration transaction is valid, this routine will process the registration with the necessary updates (e.g., payment/redemption). */
 CREATE OR REPLACE PROCEDURE register_session(_cust_id int, _offering_id int, _session_id int, _pay_by payment_method) AS $$
 DECLARE
-	_reg_deadline date;
-	_seating_capacity int;
 	_credit_card record;
 	_buys_package record;
+	_reg_deadline date;
 BEGIN
 	SELECT registration_deadline INTO _reg_deadline
 	FROM Offerings 
 	WHERE offering_id = _offering_id;
-	
-	SELECT R.seating_capacity INTO _seating_capacity
-	FROM Sessions S
-	JOIN Rooms R ON S.room = R.rid
-	WHERE S.offering_id = _offering_id
-		AND S.sid = _session_id;
-		
-	_credit_card := get_latest_credit_card(_cust_id);
-	_buys_package := get_latest_course_package(_cust_id);
-	
+
 	IF (_reg_deadline < CURRENT_DATE) THEN
-		RAISE EXCEPTION 'Registration deadline is over.';
+		RAISE EXCEPTION 'Registration deadline for course offering is over.';
 	END IF;
 	IF (is_registered_for_offering(_cust_id, _offering_id)) THEN
 		RAISE EXCEPTION 'Already registered for specified course offering.';
 	END IF;
-	IF (get_session_num_registrations(_offering_id, _session_id) >= _seating_capacity) THEN
-		RAISE EXCEPTION 'No available seats.';
+	IF (NOT is_session_available(_offering_id, _session_id)) THEN
+		RAISE EXCEPTION 'No available seats for specified session';
 	END IF;
 	
 	IF (_pay_by = 'credit_card') THEN
+		_credit_card := get_latest_credit_card(_cust_id);
+		
 		IF (_credit_card.expiry_date < CURRENT_DATE) THEN
 			RAISE EXCEPTION 'Credit card has expired.';
 		END IF;
@@ -618,6 +694,8 @@ BEGIN
 		VALUES(LOCALTIMESTAMP, _credit_card.number, _session_id, _offering_id);
 	END IF;
 	IF (_pay_by = 'course_package') THEN
+		_buys_package := get_latest_course_package(_cust_id);
+	
 		IF (_buys_package.package_id IS NULL) THEN
 			RAISE EXCEPTION 'No course package bought.';
 		END IF;
@@ -651,18 +729,98 @@ END;
 $$ LANGUAGE plpgsql;
 
 --19
-/* This routine is used when a customer requests to change a registered course session to another session. The inputs to the routine include the following: customer identifier, course offering identifier, and new session number. If the update request is valid and there is an available seat in the new session, the routine will process the request with the necessary updates. */
+/* This routine is used when a customer requests to change a registered course session to another session. The inputs to the routine include the following: customer identifier, course offering identifier, and new session number. If the update request is valid and there is an available seat in the new session, the routine will process the request with the necessary updates. 
+Cannot update from and to a session that has already started.
+Does not update the registration or redemption date. */
 CREATE OR REPLACE PROCEDURE update_course_session(_cust_id int, _offering_id int, _new_session_id int) AS $$
+DECLARE
+	_old_session record;
 BEGIN
-
+	_old_session = get_registered_session(_cust_id, _offering_id);
+	
+	IF (_old_session IS NULL) THEN
+		RAISE EXCEPTION 'Not registered for specified course offering.';
+	END IF;
+	IF (_old_session.sid = _new_session_id) THEN
+		RAISE EXCEPTION 'Already registered for specified session.';
+	END IF;
+	IF (get_session_timestamp(_old_session_id) < LOCALTIMESTAMP) THEN
+		RAISE EXCEPTION 'Current session has already started.';
+	END IF;
+	IF (get_session_timestamp(_new_session_id) < LOCALTIMESTAMP) THEN
+		RAISE EXCEPTION 'Specified session has already started.';
+	END IF;
+	IF (NOT is_session_available(_offering_id, _new_session_id)) THEN
+		RAISE EXCEPTION 'No available seats for specified session.';
+	END IF;
+	
+	IF (_old_session.paid_by = 'credit_card') THEN
+		UPDATE Registers
+		SET sid = _new_session_id
+		WHERE date = _old_session.paid_date
+			AND number = _old_session.cc_num
+			AND sid = _old_session.session_id
+			AND offering_id = _offering_id;
+	END IF;
+	IF (_old_session.paid_by = 'course_package') THEN
+		UPDATE Redeems
+		SET sid = _new_session_id
+		WHERE buys_date = _old_session.package_buys_date
+			AND package_id = _old_session.course_package_id
+			AND number = _old_session.cc_num
+			AND date = _old_session.paid_date
+			AND sid = _old_session.session_id
+			AND offering_id = _offering_id;
+	END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 --20
 /* This routine is used when a customer requests to cancel a registered course session. The inputs to the routine include the following: customer identifier, and course offering identifier. If the cancellation request is valid, the routine will process the request with the necessary updates. */
 CREATE OR REPLACE PROCEDURE cancel_registration(_cust_id int, _offering_id int) AS $$
+DECLARE
+	_session record;
+	_session_start timestamp;
+	_within_grace_period boolean;
+	_refund_amount int;
+	_package_credit int;
 BEGIN
-
+	_session := get_registered_session(_cust_id, _offering_id);
+	_session_start := get_session_timestamp(_session.session_id);
+	
+	IF (_session IS NULL) THEN
+		RAISE EXCEPTION 'Not registered for specified course offering.';
+	END IF;
+	IF (_session_start < LOCALTIMESTAMP) THEN
+		RAISE EXCEPTION 'Current session has already started.';
+	END IF;
+	
+	_within_grace_period := (_session_start::date - CURRENT_DATE) >= 7;
+	IF (_session.paid_by = 'credit_card') THEN
+		IF (_within_grace_period) THEN
+			SELECT 0.9*fees INTO _refund_amount
+			FROM Offerings
+			WHERE offering_id = _offering_id;
+		ELSE 
+			_refund_amount := 0;
+		END IF;
+	END IF;
+	IF (_session.paid_by = 'course_package') THEN
+		IF (_within_grace_period) THEN
+			_package_credit := 1
+			
+			UPDATE Buys
+			SET num_remaining_redemptions := num_remaining_redemptions + _package_credit
+			WHERE date = _session.package_buys_date
+				AND package_id = _session.course_package_id
+				AND number = _session.cc_num;
+		ELSE 
+			_package_credit := 0;
+		END IF;
+	END IF;	
+	
+	INSERT INTO Cancels
+	VALUES(_cust_id, LOCALTIMESTAMP, _session.session_id, _offering_id, _refund_amount, _package_credit);
 END;
 $$ LANGUAGE plpgsql;
 
