@@ -322,6 +322,31 @@ create trigger sessions_on_weekdays_t
 before insert or update on Sessions
 for each row execute function sessions_on_weekdays_f();
 
+-- session mustn't end after 6
+
+create or replace function sessions_end_by_six_f()
+returns trigger as $$
+    declare
+        dur integer;
+        endtime integer;
+    begin
+        select duration into dur
+        from (Sessions natural join Offerings) natural join Courses
+        where sid = NEW.sid and offering_id = NEW.offering_id;
+        endtime := NEW.start_time + dur;
+        if endtime > 18 then
+            raise 'Session should not end after 6pm';
+            return NULL;
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists sessions_end_by_six_t on Sessions;
+create trigger sessions_end_by_six_t
+before insert or update on Sessions
+for each row execute function sessions_end_by_six_f();
+
 --The registration deadline for a course offering must be at least 10 days before its start date.
 
 create or replace function registration_ten_days_before_f1()
