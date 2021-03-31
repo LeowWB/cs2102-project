@@ -36,9 +36,11 @@ create table Course_packages
     package_id             serial primary key,
     sale_start_date        date,
     sale_end_date          date,
-    num_free_registrations integer,
+    num_free_registrations integer
+        check (num_free_registrations > 0),
     name                   text,
-    price                  integer,
+    price                  integer
+        check (price > 0),
 
     check (sale_start_date < sale_end_date)
 );
@@ -181,8 +183,10 @@ create table Offerings
 	offering_id					integer primary key,
     course_id                   integer references Courses (course_id),
     launch_date                 date,
-    fees                        int,
-    target_number_registrations integer,
+    fees                        integer
+        check ( fees >= 0 ),
+    target_number_registrations integer
+        check ( target_number_registrations >= 0 ),
     registration_deadline       date,
     handler                     integer references Administrators (eid) not null,
     -- seating capacity is derived from sessions

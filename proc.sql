@@ -2,6 +2,8 @@ CREATE OR REPLACE TYPE employee_status AS ENUM ('full_time', 'part_time');
 CREATE OR REPLACE TYPE employee_category AS ENUM ('administrator', 'manager', 'instructor');
 CREATE OR REPLACE TYPE session_info AS (date date, start_time int, room_id int);
 CREATE OR REPLACE TYPE payment_method AS ENUM ('credit_card', 'course_package');
+CREATE OR REPLACE TYPE redeemed_session_info AS (course_name text, session_date date, session_start_hour int);
+CREATE OR REPLACE TYPE course_package_info AS (pkg_name text, purchase_date timestamp, price int, num_free_sessions int, num_unredeemed_sessions int, redeemed_sessions_info redeemed_session_info[]);
 
 CREATE OR REPLACE VIEW CourseOfferingSessions AS 
 	SELECT C.course_id, C.title, C.description, C.duration, C.area, O.offering_id, O.launch_date, O.fees, O.target_number_registrations, O.registration_deadline, O.handler, S.sid, S.instructor, S.date, S.start_time, S.room
@@ -286,6 +288,88 @@ BEGIN
 		cc_num := redeems_r.number;
 		course_package_id := redeems_r.package_id;
 		package_buys_date := redeems_r.buys_date;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_room_seating_capacity(_offering_id int) RETURNS int AS $$
+BEGIN
+	RETURN QUERY
+	SELECT seating_capacity
+	FROM Rooms
+	WHERE rid = (
+		SELECT room
+		FROM CourseOfferingSessions
+		WHERE room = _offering_id;
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION offering_reg_deadline_passed(_offering_id int, _date date) RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT registration_deadline > _date
+	FROM Offerings
+	WHERE offering_id = _offering_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_package_if_available_for_purchase(IN _package_id int, OUT name text, OUT num_free_registrations int, OUT sale_end_date date, OUT price int) RETURNS record AS $$
+BEGIN
+	RETURN QUERY
+	SELECT name, num_free_registrations, sale_end_date, price
+	FROM get_available_course_packages()
+	WHERE package_id = _package_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_credit_card_number(_cust_id int) RETURNS varchar AS $$
+BEGIN
+	RETURN QUERY
+	SELECT number
+	FROM Credit_cards
+	WHERE cust_id = _cust_id;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_most_recent_package(IN _cc_num varchar(19), OUT date timestamp, OUT package_id int, OUT num_remaining_redemptions int, OUT name text, OUT price int, OUT num_free_registrations int) RETURNS record AS $$
+BEGIN
+	RETURN QUERY
+	SELECT date, package_id, num_remaining_redemptions, name, price, num_free_registrations
+	FROM Buys B JOIN Course_packages P ON B.package_id = P.package_id 
+	WHERE number = _cc_num
+	ORDER BY date desc
+	LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_redeemed_sessions(_date timestamp, _pkg_id int, _cc_num varchar(19)) RETURNS anyarray AS $$
+DECLARE
+	_arr redeemed_session_info[];
+	_curs CURSOR FOR (
+		SELECT S.offering_id, S.date, S.start_time
+		FROM Redeems R JOIN Sessions S ON R.sid = S.sid, R.offering_id = S.offering_id
+		WHERE buys_date = _date, package_id = _pkg_id, number = _cc_num
+		ORDER BY S.date, S.start_time;
+	);
+	r record;
+	_first_access boolean;
+	_course_name text;
+BEGIN
+	_first_access := true;
+	OPEN _curs;
+	LOOP
+		FETCH _curs INTO r;
+		EXIT WHEN NOT FOUND;
+		IF _first_access THEN
+			SELECT title INTO _course_name
+			FROM Offerings O JOIN Courses C ON O.course_id = C.course_id
+			WHERE O.offering_id = r.offering_id;
+			_first_access := false;
+		END IF;
+		-- Add session info to array
+		_arr := array_append(_arr, ROW(_course_name, r.date, r.start_time));
+	END LOOP;
+	RETURN _arr;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -595,9 +679,36 @@ $$ LANGUAGE plpgsql;
 
 -- 10
 /* This routine is used to add a new offering of an existing course. The inputs to the routine include the following: course offering identifier, course identifier, course fees, launch date, registration deadline, administrator’s identifier, and information for each session (session date, session start hour, and room identifier). If the input course offering information is valid, the routine will assign instructors for the sessions. If a valid instructor assignment exists, the routine will perform the necessary updates to add the course offering; otherwise, the routine will abort the course offering addition. Note that the seating capacity of the course offering must be at least equal to the course offering’s target number of registrations. */
-CREATE OR REPLACE PROCEDURE add_course_offering(_offering_id int, _course_id int, _course_fees int, _launch_date date, _reg_deadline date, _admin_id int, _sessions session_info[]) AS $$
+CREATE OR REPLACE PROCEDURE add_course_offering(_offering_id int, _course_id int, _course_fees int, _target_reg int, _launch_date date, _reg_deadline date, _admin_id int, _sessions session_info[]) AS $$
+DECLARE
+	_instr_id int;
+	_session_num int;
 BEGIN
-
+	IF _target_reg > get_room_seating_capacity(_offering_id) THEN
+		RAISE EXCEPTION "Target registration exceeds room seating capacity."
+	END IF;
+	IF cardinality(_sessions) <= 0 THEN
+		RAISE EXCEPTION "A course offering must have at least 1 session!"
+	END IF;
+	IF _reg_deadline + 10 > _launch_date THEN
+		RAISE EXCEPTION "Offering registration deadline must be at least 10 days before offering start date!"
+	END IF;
+	_session_num := 1
+	FOREACH _session IN ARRAY _sessions LOOP
+		IF NOT EXISTS (
+			SELECT 1
+			FROM find_instructors(_course_id, _session.date, _session.start_time)
+		) THEN
+			RAISE EXCEPTION "No instructor available to teach 1 of the sessions!"
+		END IF;
+		_instr_id := SELECT emp_id
+					 FROM find_instructors(_course_id, _session.date, _session.start_time)
+					 LIMIT 1;
+		add_session(_offering_id, _session_num, _session.date, _session.start_time, _instr_id, _session.room_id);
+		_session_num := _session_num + 1;
+	END LOOP
+	INSERT INTO Offerings(offering_id, course_id, launch_date, fees, target_number_registrations, registration_deadline, handler)
+	VALUES(_offering_id, _course_id, _launch_date, _course_fees, _target_reg, _reg_deadline, _admin_id);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -605,7 +716,8 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to add a new course package for sale. The inputs to the routine include the following: package name, number of free course sessions, start and end date indicating the duration that the promotional package is available for sale, and the price of the package. The course package identifier is generated by the system. If the course package information is valid, the routine will perform the necessary updates to add the new course package. */
 CREATE OR REPLACE PROCEDURE add_course_package(_name text, _num_free_sessions int, _sale_start_date date, _sale_end_date date, _price int) AS $$
 BEGIN
-
+	INSERT INTO Course_packages(sale_start_date, sale_end_date, num_free_registrations, name, price)
+	VALUES(_sale_start_date, _sale_end_date, _num_free_registrations, _name, _price);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -613,25 +725,71 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to retrieve the course packages that are available for sale. The routine returns a table of records with the following information for each available course package: package name, number of free course sessions, end date for promotional package, and the price of the package. */
 CREATE OR REPLACE FUNCTION get_available_course_packages() 
 RETURNS TABLE(name text, num_free_sessions int, sale_end_date date, price int) AS $$
+DECLARE
+	_curr_date date;
 BEGIN
-
+	_curr_date := SELECT CURRENT_DATE;
+	RETURN QUERY
+	SELECT name, num_free_registrations, sale_end_date, price
+	FROM Course_packages
+	WHERE _curr_date > sale_start_date and _curr_date < sale_end_date;
 END;
 $$ LANGUAGE plpgsql;
 
 --13
 /* This routine is used when a customer requests to purchase a course package. The inputs to the routine include the customer and course package identifiers. If the purchase transaction is valid, the routine will process the purchase with the necessary updates (e.g., payment). */
 CREATE OR REPLACE PROCEDURE buy_course_package(_cust_id int, _package_id int) AS $$
+DECLARE
+	_cc_num varchar(19);
+	r record;
 BEGIN
-
+	r := get_package_if_available_for_purchase(_package_id);
+	IF r IS NULL THEN
+		RAISE EXCEPTION "Package is not available for purchase!"
+	END IF;
+	_cc_num := get_credit_card_number(_cust_id);
+	INSERT INTO Buys(date, package_id, number, num_remaining_redemptions)
+	VALUES(CURRENT_TIMESTAMP, _package_id, _cc_num, r._num_free_registrations);
 END;
 $$ LANGUAGE plpgsql;
 
 --14
 /* This routine is used when a customer requests to view his/her active/partially active course package. The input to the routine is a customer identifier. The routine returns the following information as a JSON value: package name, purchase date, price of package, number of free sessions included in the package, number of sessions that have not been redeemed, and information for each redeemed session (course name, session date, session start hour). The redeemed session information is sorted in ascending order of session date and start hour. */
 CREATE OR REPLACE FUNCTION get_my_course_package(_cust_id int) 
-RETURNS TABLE(package_info json) AS $$
+RETURNS json AS $$
+DECLARE
+	_cc_num varchar(19);
+	r record;
+	_session_info redeemed_session_info[];
+	_pkg_info course_package_info;
+	_most_recent_session_date date;
+	_curr_date date;
 BEGIN
-
+	_cc_num := get_credit_card_number(_cust_id);
+	r := get_most_recent_package(_cc_num);
+	IF r IS NULL THEN
+		RAISE EXCEPTION "Customer has not bought a package before."
+	END IF;
+	IF r.num_remaining_redemptions >= 1 THEN
+		-- Active package
+		_session_info := get_redeemed_sessions(r.date, r.package_id, _cc_num);
+		_pkg_info := ROW(r.name , r.date, r.price, r.num_free_registrations, r.num_remaining_redemptions, _session_info);
+		RETURN to_json(_pkg_info);
+	ELSE
+		-- All sessions have been redeemed
+		SELECT S.date INTO _most_recent_session_date
+		FROM Redeems R JOIN Sessions S ON R.sid = S.sid, R.offering_id = S.offering_id
+		WHERE buys_date = r.date, package_id = r.package_id, number = _cc_num
+		ORDER BY S.date desc;
+		-- Check if package is partially active (one session at least 7 days later)
+		_curr_date = SELECT CURRENT_DATE;
+		IF NOT _curr_date + 7 > _most_recent_session_date THEN
+			-- Partially active!
+			_session_info := get_redeemed_sessions(r.date, r.package_id, _cc_num);
+			_pkg_info := ROW(r.name , r.date, r.price, r.num_free_registrations, r.num_remaining_redemptions, _session_info);
+			RETURN to_json(_pkg_info);
+		END IF;
+		-- No message or return if package is inactive
 END;
 $$ LANGUAGE plpgsql;
 
@@ -852,7 +1010,11 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to add a new session to a course offering. The inputs to the routine include the following: course offering identifier, new session number, new session day, new session start hour, instructor identifier for new session, and room identifier for new session. If the course offering’s registration deadline has not passed and the the addition request is valid, the routine will process the request with the necessary updates. */
 CREATE OR REPLACE PROCEDURE add_session(_offering_id int, _session_id int, _date date, _start_time int, _instructor_id int, _room_id int) AS $$
 BEGIN
-
+	IF offering_reg_deadline_passed(_offering_id, _date) THEN
+		RAISE EXCEPTION "Course offering registration deadline has passed, unable to add session."
+	END IF;
+	INSERT INTO Sessions(sid, offering_id, instructor, date, start_time, room)
+	VALUES(_session_num, _offering_id, _instructor_id, _date, _start_time, _room_id);
 END;
 $$ LANGUAGE plpgsql;
 
