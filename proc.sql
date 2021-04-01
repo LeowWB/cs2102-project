@@ -10,7 +10,6 @@ CREATE OR REPLACE VIEW CourseOfferingSessions AS
 	FROM Sessions S 
 	JOIN Offerings O ON S.offering_id = O.offering_id 
 	JOIN Courses C ON O.course_id = C.course_id;
-	
 
 CREATE OR REPLACE FUNCTION does_customer_exist(_cust_id int) 
 RETURNS boolean AS $$
@@ -32,6 +31,30 @@ BEGIN
 		SELECT 1
 		FROM Employees
 		WHERE eid = _emp_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION does_administrator_exist(_admin_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT EXISTS(
+		SELECT 1
+		FROM Administrators
+		WHERE eid = _admin_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION does_instructor_exist(_instr_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT EXISTS(
+		SELECT 1
+		FROM Instructors
+		WHERE eid = _instr_id
 	);
 END;
 $$ LANGUAGE plpgsql;
@@ -375,15 +398,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_credit_card_number(_cust_id int) RETURNS varchar AS $$
-BEGIN
-	RETURN QUERY
-	SELECT number
-	FROM Credit_cards
-	WHERE cust_id = _cust_id;
-END;
-$$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION get_most_recent_package(IN _cc_num varchar(19), OUT date timestamp, OUT package_id int, OUT num_remaining_redemptions int, OUT name text, OUT price int, OUT num_free_registrations int) RETURNS record AS $$
 BEGIN
 	RETURN QUERY
@@ -427,6 +441,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- TODO: Improve efficiency, get without using cursor?
 CREATE OR REPLACE FUNCTION get_unsorted_available_course_offerings() 
 RETURNS TABLE(course_title text, course_area text, start_date date, end_date date, reg_deadline date, course_fees int, num_rem_seats int) AS $$
 DECLARE
@@ -457,6 +472,59 @@ BEGIN
 		RETURN NEXT;
 	END LOOP;
 	CLOSE _curs;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION get_work_days(_salary_type char(9), _join_date date, _depart_date date) RETURNS int AS $$
+DECLARE
+	_num_days_in_month int;
+	_curr_month int;
+	_join_month int;
+	_first_work_day int;
+BEGIN
+	-- Work days are not applicable to part-time employees
+	IF salary_type = "part_time" THEN
+		RETURN NULL
+	END IF;
+	SELECT extract(days FROM date_trunc('month', now()) + interval '1 month - 1 day') INTO _num_days_in_month;
+	SELECT extract(month FROM now()) INTO _curr_month;
+	SELECT extract(month FROM _join_date) INTO _join_month;
+	IF _join_month = _curr_month THEN
+		_first_work_day = _join_date;
+	ELSE 
+		_first_work_day = 1;
+	END IF;
+	RETURN COALESCE(_depart_date, _num_days_in_month) - _first_work_day + 1;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_work_hours(_eid int, _salary_type char(9)) RETURNS int AS $$
+BEGIN
+	-- Work hours are not applicable to full-time employees 
+	IF _salary_type = "full_time" THEN
+		RETURN NULL
+	END IF;
+	RETURN QUERY
+	SELECT sum(duration)
+	FROM CourseOfferingSessions
+	WHERE instructor = _eid
+		AND extract(month from now()) = extract(month from date)
+	GROUP BY instructor;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION calculate_salary(_eid int, _salary_type char(9), _join_date date, _depart_date date, _monthly_salary int, _hourly_rate int) RETURNS int AS $$
+DECLARE
+	_num_work_quantity int;
+BEGIN
+	IF salary_type = "full_time" THEN
+		_num_work_quantity := get_work_days(_salary_type, _join_date, _depart_date);
+		RETURN (monthly_salary * _num_work_quantity) / _num_days_in_month;
+	ELSE
+		-- salary_type is either "full_time" or "part_time"
+		_num_work_quantity := get_work_hours(_eid, _salary_type);
+		RETURN _hourly_rate * _num_work_quantity;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -785,6 +853,13 @@ DECLARE
 	_instr_id int;
 	_session_num int;
 BEGIN
+	IF (NOT does_course_exist(_course_id)) THEN
+		RAISE EXCEPTION 'Specified course does not exist.';
+	END IF;
+	IF (NOT does_administrator_exist(_admin_id)) THEN
+		RAISE EXCEPTION 'Specified administrator does not exist.';
+	END IF;
+
 	IF _target_reg > get_offering_seating_capacity(_offering_id) THEN
 		RAISE EXCEPTION "Target registration exceeds course offering seating capacity."
 	END IF;
@@ -796,6 +871,9 @@ BEGIN
 	END IF;
 	_session_num := 1
 	FOREACH _session IN ARRAY _sessions LOOP
+		IF (NOT does_room_exist(_session.room_id)) THEN
+			RAISE EXCEPTION 'One of the specified rooms does not exist.';
+		END IF;
 		IF NOT EXISTS (
 			SELECT 1
 			FROM find_instructors(_course_id, _session.date, _session.start_time)
@@ -844,11 +922,14 @@ DECLARE
 	_cc_num varchar(19);
 	r record;
 BEGIN
+	IF (NOT does_customer_exist(_cust_id)) THEN
+		RAISE EXCEPTION 'Specified customer does not exist.';
+	END IF;
 	r := get_package_if_available_for_purchase(_package_id);
 	IF r IS NULL THEN
 		RAISE EXCEPTION "Package is not available for purchase!"
 	END IF;
-	_cc_num := get_credit_card_number(_cust_id);
+	_cc_num := get_latest_credit_card(_cust_id);
 	INSERT INTO Buys(date, package_id, number, num_remaining_redemptions)
 	VALUES(CURRENT_TIMESTAMP, _package_id, _cc_num, r._num_free_registrations);
 END;
@@ -866,7 +947,10 @@ DECLARE
 	_most_recent_session_date date;
 	_curr_date date;
 BEGIN
-	_cc_num := get_credit_card_number(_cust_id);
+	IF (NOT does_customer_exist(_cust_id)) THEN
+		RAISE EXCEPTION 'Specified customer does not exist.';
+	END IF;
+	_cc_num := get_latest_credit_card(_cust_id);
 	r := get_most_recent_package(_cc_num);
 	IF r IS NULL THEN
 		RAISE EXCEPTION "Customer has not bought a package before."
@@ -1274,6 +1358,15 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to add a new session to a course offering. The inputs to the routine include the following: course offering identifier, new session number, new session day, new session start hour, instructor identifier for new session, and room identifier for new session. If the course offering’s registration deadline has not passed and the the addition request is valid, the routine will process the request with the necessary updates. */
 CREATE OR REPLACE PROCEDURE add_session(_offering_id int, _session_id int, _date date, _start_time int, _instructor_id int, _room_id int) AS $$
 BEGIN
+	IF (NOT does_offering_exist(_offering_id)) THEN
+		RAISE EXCEPTION 'Specified offering does not exist.';
+	END IF;
+	IF (NOT does_instructor_exist(_instructor_id)) THEN
+		RAISE EXCEPTION 'Specified instructor does not exist.';
+	END IF;
+	IF (NOT does_room_exist(_room_id)) THEN
+		RAISE EXCEPTION 'Specified room does not exist.';
+	END IF;
 	IF offering_reg_deadline_passed(_offering_id, _date) THEN
 		RAISE EXCEPTION "Course offering registration deadline has passed, unable to add session."
 	END IF;
@@ -1286,8 +1379,27 @@ $$ LANGUAGE plpgsql;
 /* This routine is used at the end of the month to pay salaries to employees. The routine inserts the new salary payment records and returns a table of records (sorted in ascending order of employee identifier) with the following information for each employee who is paid for the month: employee identifier, name, status (either part-time or full-time), number of work days for the month, number of work hours for the month, hourly rate, monthly salary, and salary amount paid. For a part-time employees, the values for number of work days for the month and monthly salary should be null. For a full-time employees, the values for number of work hours for the month and hourly rate should be null. */
 CREATE OR REPLACE FUNCTION pay_salary() 
 RETURNS TABLE(emp_id int, emp_name text, emp_status employee_status, num_work_days int, num_work_hours int, hourly_rate int, monthly_salary int, amount_paid int) AS $$
+DECLARE
+	_curs CURSOR FOR (
+		SELECT eid, name, salary_type, get_work_days(salary_type, join_date, depart_date) AS num_work_days, get_work_hours(eid, salary_type) AS num_work_hours, hourly_rate, monthly_salary, calculate_salary(eid, salary_type, join_date, depart_date, monthly_salary, hourly_rate) AS amount_paid INTO r
+		FROM Employees LEFT JOIN Full_time_Emp LEFT JOIN Part_time_Emp
+		ORDER BY eid;
+	);
+	r record;
+	_curr_date date;
 BEGIN
+	SELECT CURRENT_DATE INTO _curr_date;
+	OPEN _curs;
+	LOOP
+		FETCH _curs INTO r;
+		EXIT WHEN NOT FOUND;
 
+		INSERT INTO Pay_slips(payment_date, amount, num_work_hours, num_work_days, eid)
+		VALUES(_curr_date, r.amount_paid, r.num_work_hours, r.num_work_days, r.eid);	
+
+		RETURN NEXT;
+	END LOOP;
+	CLOSE _curs;
 END;
 $$ LANGUAGE plpgsql;
 
