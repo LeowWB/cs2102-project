@@ -11,6 +11,80 @@ CREATE OR REPLACE VIEW CourseOfferingSessions AS
 	JOIN Offerings O ON S.offering_id = O.offering_id 
 	JOIN Courses C ON O.course_id = C.course_id;
 	
+
+CREATE OR REPLACE FUNCTION does_customer_exist(_cust_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT EXISTS(
+		SELECT 1
+		FROM Customers
+		WHERE cust_id = _cust_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION does_employee_exist(_emp_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT EXISTS(
+		SELECT 1
+		FROM Employees
+		WHERE eid = _emp_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION does_course_exist(_course_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT EXISTS(
+		SELECT 1
+		FROM Courses
+		WHERE course_id = _course_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION does_offering_exist(_offering_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT EXISTS(
+		SELECT 1
+		FROM Offerings 
+		WHERE offering_id = _offering_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION does_session_exist(_offering_id int, _session_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT EXISTS(
+		SELECT 1
+		FROM Sessions 
+		WHERE offering_id = _offering_id
+			AND sid = _session_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION does_room_exist(_room_id int) 
+RETURNS boolean AS $$
+BEGIN
+	RETURN QUERY
+	SELECT EXISTS(
+		SELECT 1
+		FROM Rooms 
+		WHERE rid = _room_id
+	);
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION get_latest_credit_card(_cust_id int) 
 RETURNS Credit_cards AS $$
 BEGIN
@@ -444,6 +518,10 @@ CREATE OR REPLACE PROCEDURE remove_employee(_emp_id int, _depart_date date) AS $
 DECLARE
 	_job_type text;
 BEGIN
+	IF (NOT does_employee_exist(_emp_id)) THEN
+		RAISE EXCEPTION 'Specified employee does not exist.';
+	END IF;
+
 	SELECT job_type INTO _job_type 
 	FROM Employees 
 	WHERE eid = _emp_id;
@@ -497,6 +575,10 @@ $$ LANGUAGE plpgsql;
 /* This routine is used when a customer requests to change his/her credit card details. The inputs to the routine include the customer identifier and his/her new credit card details (credit card number, expiry date, CVV code). */
 CREATE OR REPLACE PROCEDURE update_credit_card(_cust_id int, _cc_num text, _expiry_date date, _cvv text) AS $$
 BEGIN
+	IF (NOT does_customer_exist(_cust_id)) THEN
+		RAISE EXCEPTION 'Specified customer does not exist.';
+	END IF;
+
 	INSERT INTO Credit_cards
 	VALUES(_cc_num, _cvv, _cust_id, LOCALTIMESTAMP, _expiry_date);
 END;
@@ -528,6 +610,10 @@ DECLARE
 	_course_duration int;
 	_emp record;
 BEGIN
+	IF (NOT does_course_exist(_course_id)) THEN
+		RAISE EXCEPTION 'Specified course does not exist.';
+	END IF;
+
 	SELECT duration INTO _course_duration
 	FROM Courses 
 	WHERE course_id = _course_id;
@@ -576,6 +662,10 @@ DECLARE
 	_date date;
 	_hour int;
 BEGIN
+	IF (NOT does_course_exist(_course_id)) THEN
+		RAISE EXCEPTION 'Specified course does not exist.';
+	END IF;
+
 	SELECT duration INTO _course_duration
 	FROM Courses 
 	WHERE course_id = _course_id;
@@ -815,6 +905,10 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION get_available_course_sessions(_offering_id int) 
 RETURNS TABLE(session_date date, session_start_time int, instructor_name text, num_rem_seats int) AS $$
 BEGIN
+	IF (NOT does_offering_exist(_offering_id)) THEN
+		RAISE EXCEPTION 'Specified course offering does not exist.';
+	END IF;
+
 	RETURN QUERY
 	SELECT CS.date, CS.start_time, E.name, _num_rem_seats
 	FROM CourseOfferingSessions CS 
@@ -835,6 +929,16 @@ DECLARE
 	_buys_package record;
 	_reg_deadline date;
 BEGIN
+	IF (NOT does_customer_exist(_cust_id)) THEN
+		RAISE EXCEPTION 'Specified customer does not exist.';
+	END IF;
+	IF (NOT does_offering_exist(_offering_id)) THEN
+		RAISE EXCEPTION 'Specified course offering does not exist.';
+	END IF;
+	IF (NOT does_session_exist(_offering_id, _new_session_id)) THEN
+		RAISE EXCEPTION 'Specified course session does not exist.';
+	END IF;
+
 	SELECT registration_deadline INTO _reg_deadline
 	FROM Offerings 
 	WHERE offering_id = _offering_id;
@@ -846,7 +950,7 @@ BEGIN
 		RAISE EXCEPTION 'Already registered for specified course offering.';
 	END IF;
 	IF (NOT is_session_available(_offering_id, _session_id)) THEN
-		RAISE EXCEPTION 'No available seats for specified session';
+		RAISE EXCEPTION 'No available seats for specified course session';
 	END IF;
 	
 	IF (_pay_by = 'credit_card') THEN
@@ -886,6 +990,10 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION get_my_registrations(_cust_id int) 
 RETURNS TABLE(course_name text, course_fees int, session_date date, session_start_time int, session_duration int, instructor_name text) AS $$
 BEGIN
+	IF (NOT does_customer_exist(_cust_id)) THEN
+		RAISE EXCEPTION 'Specified customer does not exist.';
+	END IF;
+	
 	RETURN QUERY
 	SELECT CS.title, CS.fees, CS.date, CS.start_time, CS.duration, E.name
 	FROM CourseOfferingSessions CS JOIN Employees E ON CS.instructor = E.eid
@@ -902,22 +1010,32 @@ CREATE OR REPLACE PROCEDURE update_course_session(_cust_id int, _offering_id int
 DECLARE
 	_old_session record;
 BEGIN
+	IF (NOT does_customer_exist(_cust_id)) THEN
+		RAISE EXCEPTION 'Specified customer does not exist.';
+	END IF;
+	IF (NOT does_offering_exist(_offering_id)) THEN
+		RAISE EXCEPTION 'Specified course offering does not exist.';
+	END IF;
+	IF (NOT does_session_exist(_offering_id, _new_session_id)) THEN
+		RAISE EXCEPTION 'Specified course session does not exist.';
+	END IF;
+
 	_old_session = get_registered_session(_cust_id, _offering_id);
 	
 	IF (_old_session IS NULL) THEN
 		RAISE EXCEPTION 'Not registered for specified course offering.';
 	END IF;
 	IF (_old_session.sid = _new_session_id) THEN
-		RAISE EXCEPTION 'Already registered for specified session.';
+		RAISE EXCEPTION 'Already registered for specified course session.';
 	END IF;
 	IF (get_session_timestamp(_old_session_id) < LOCALTIMESTAMP) THEN
-		RAISE EXCEPTION 'Current session has already started.';
+		RAISE EXCEPTION 'Current course session has already started.';
 	END IF;
 	IF (get_session_timestamp(_new_session_id) < LOCALTIMESTAMP) THEN
-		RAISE EXCEPTION 'Specified session has already started.';
+		RAISE EXCEPTION 'Specified course session has already started.';
 	END IF;
 	IF (NOT is_session_available(_offering_id, _new_session_id)) THEN
-		RAISE EXCEPTION 'No available seats for specified session.';
+		RAISE EXCEPTION 'No available seats for specified course session.';
 	END IF;
 	
 	IF (_old_session.paid_by = 'credit_card') THEN
@@ -951,6 +1069,13 @@ DECLARE
 	_refund_amount int;
 	_package_credit int;
 BEGIN
+	IF (NOT does_customer_exist(_cust_id)) THEN
+		RAISE EXCEPTION 'Specified customer does not exist.';
+	END IF;
+	IF (NOT does_offering_exist(_offering_id)) THEN
+		RAISE EXCEPTION 'Specified course offering does not exist.';
+	END IF;
+
 	_session := get_registered_session(_cust_id, _offering_id);
 	_session_start := get_session_timestamp(_session.session_id);
 	
@@ -958,7 +1083,7 @@ BEGIN
 		RAISE EXCEPTION 'Not registered for specified course offering.';
 	END IF;
 	IF (_session_start < LOCALTIMESTAMP) THEN
-		RAISE EXCEPTION 'Current session has already started.';
+		RAISE EXCEPTION 'Current course session has already started.';
 	END IF;
 	
 	_within_grace_period := (_session_start::date - CURRENT_DATE) >= 7;
@@ -1010,7 +1135,19 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to remove a course session. The inputs to the routine include the following: course offering identifier and session number. If the course session has not yet started and the request is valid, the routine will process the request with the necessary updates. The request must not be performed if there is at least one registration for the session. Note that the resultant seating capacity of the course offering could fall below the course offering’s target number of registrations, which is allowed. */
 CREATE OR REPLACE PROCEDURE remove_session(_offering_id int, _session_id int) AS $$
 BEGIN
-
+	IF (NOT does_offering_exist(_offering_id)) THEN
+		RAISE EXCEPTION 'Specified course offering does not exist.';
+	END IF;
+	IF (NOT does_session_exist(_offering_id, _session_id)) THEN
+		RAISE EXCEPTION 'Specified course session does not exist.';
+	END IF;
+	IF (get_session_num_registrations(_offering_id, _session_id) > 0) THEN
+		RAISE EXCEPTION 'There is at least one registration for the specified course session.';
+	END IF;
+	
+	DELETE FROM Sessions
+	WHERE offering_id = _offering_id
+		AND sid = _session_id;
 END;
 $$ LANGUAGE plpgsql;
 
