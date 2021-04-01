@@ -204,6 +204,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION does_session_exceed_part_time_hours(_emp_id int, _date date, _duration int)
+RETURNS boolean AS $$
+BEGIN
+	RETURN (get_instructor_month_hours(_emp_id, EXTRACT(year FROM _date), EXTRACT(month FROM _date)) + duration > 30);
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION get_session_num_registrations(_offering_id int, _session_id int) 
 RETURNS int AS $$
 BEGIN
@@ -478,6 +485,7 @@ BEGIN;
 	INSERT INTO Employees(salary_type, job_type, name, phone, address, email, join_date) 
 	VALUES (_status, _job_type, _name, _phone, _address, _email, _join_date)
 	RETURNING eid INTO _emp_id;
+	
 	IF (_status = 'part_time') THEN
 		INSERT INTO Part_time_Emp VALUES(_emp_id, _salary, _status);
 	END IF;
@@ -627,9 +635,7 @@ BEGIN
 		FETCH _emp_curs INTO _emp;
 		EXIT WHEN NOT FOUND;
 		
-		CONTINUE WHEN (_emp.job_type = 'part_time_instructor' 
-			AND get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _session_date), EXTRACT(month FROM _session_date)) >= 30
-		);
+		CONTINUE WHEN (_emp.job_type = 'part_time_instructor' AND does_session_exceed_part_time_hours(_emp.eid, _session_date, _course_duration));
 		
 		IF (is_instructor_session_allowed(_emp.eid, _session_date, _session_start_time, _course_duration)) THEN
 			emp_id := _emp.eid;
@@ -679,7 +685,7 @@ BEGIN
 		WHILE (_date <= _end_date) LOOP
 			_month_hours := get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _date), EXTRACT(month FROM _date));
 			
-			CONTINUE WHEN (_emp.job_type = 'part_time_instructor' AND _month_hours >= 30);
+			CONTINUE WHEN (_emp.job_type = 'part_time_instructor' AND (_month_hours + duration > 30));
 			
 			_avail_hours := ARRAY[];
 			_hour := 9;
@@ -942,7 +948,7 @@ BEGIN
 	SELECT registration_deadline INTO _reg_deadline
 	FROM Offerings 
 	WHERE offering_id = _offering_id;
-
+	
 	IF (_reg_deadline < CURRENT_DATE) THEN
 		RAISE EXCEPTION 'Registration deadline for course offering is over.';
 	END IF;
@@ -966,7 +972,7 @@ BEGIN
 	IF (_pay_by = 'course_package') THEN
 		_buys_package := get_latest_course_package(_cust_id);
 	
-		IF (_buys_package.package_id IS NULL) THEN
+		IF (_buys_package IS NULL) THEN
 			RAISE EXCEPTION 'No course package bought.';
 		END IF;
 		IF (_buys_package.num_remaining_redemptions <= 0) THEN
@@ -1118,8 +1124,72 @@ $$ LANGUAGE plpgsql;
 --21
 /* This routine is used to change the instructor for a course session. The inputs to the routine include the following: course offering identifier, session number, and identifier of the new instructor. If the course session has not yet started and the update request is valid, the routine will process the request with the necessary updates. */
 CREATE OR REPLACE PROCEDURE update_instructor(_offering_id int, _session_id int, _new_instructor_id int) AS $$
+DECLARE
+	_old_instructor_id;
+	_new_instructor record;
+	_session_date date;
+	_session_start int;
+	_course_duration int;
+	_course_area text;
 BEGIN
-
+	IF (NOT does_offering_exist(_offering_id)) THEN
+		RAISE EXCEPTION 'Specified course offering does not exist.';
+	END IF;
+	IF (NOT does_session_exist(_offering_id, _session_id)) THEN
+		RAISE EXCEPTION 'Specified course session does not exist.';
+	END IF;
+	IF (NOT does_employee_exist(_new_instructor_id)) THEN
+		RAISE EXCEPTION 'Specified employee does not exist.';
+	END IF;
+	IF (SELECT NOT EXISTS(
+		SELECT 1
+		FROM Instructors
+		WHERE eid = _new_instructor_id
+	)) THEN
+		RAISE EXCEPTION 'Specified employee is not an instructor.';
+	END IF;
+	
+	IF (get_session_timestamp(_offering_id, _session_id) < LOCALTIMESTAMP) THEN
+		RAISE EXCEPTION 'Specified course session has already started.';
+	END IF;
+	
+	SELECT instructor INTO _old_instructor_id
+	FROM Sessions
+	WHERE offering_id = _offering_id 
+		AND sid = _session_id;
+		
+	IF (_new_instructor_id = _old_instructor_id) THEN
+		RAISE EXCEPTION 'Specified instructor is same as current instructor.';
+	END IF;
+	
+	SELECT * INTO _new_instructor
+	FROM Instructors
+	WHERE eid = _new_instructor_id;
+	
+	SELECT date INTO _session_date, start_time INTO _session_start, duration INTO _course_duration, area INTO _course_area
+	FROM CourseOfferingSessions
+	WHERE offering_id = _offering_id
+		AND sid = _session_id;
+		
+	IF (SELECT NOT EXISTS(
+		SELECT 1
+		FROM Specializes
+		WHERE eid = _new_instructor_id
+			AND name = _course_area
+	)) THEN
+		RAISE EXCEPTION 'Specified instructor does not specialize in course area of specified course session.';
+	END IF;
+	IF (_new_instructor.job_type = 'part_time_instructor' AND does_session_exceed_part_time_hours(_new_instructor_id, _session_date, _course_duration)) THEN
+		RAISE EXCEPTION 'Specified instructor will exceed maximum part-time hours.';
+	END IF;
+	IF (NOT is_instructor_session_allowed(_new_instructor_id, _session_date, _session_start, _course_duration)) THEN
+		RAISE EXCEPTION 'Specified course session clashes with another session conducted by specified instructor.';
+	END IF;
+	
+	UPDATE Sessions
+	SET instructor = _new_instructor_id
+	WHERE offering_id = _offering_id
+		AND sid = _session_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1131,7 +1201,7 @@ DECLARE
 	_new_capacity int;
 	_session_date date;
 	_session_start int;
-	_session_duration int;
+	_course_duration int;
 BEGIN
 	IF (NOT does_offering_exist(_offering_id)) THEN
 		RAISE EXCEPTION 'Specified course offering does not exist.';
@@ -1143,31 +1213,34 @@ BEGIN
 		RAISE EXCEPTION 'Specified room does not exist.';
 	END IF;
 	
+	IF (get_session_timestamp(_offering_id, _session_id) < LOCALTIMESTAMP) THEN
+		RAISE EXCEPTION 'Specified course session has already started.';
+	END IF;
+	
 	SELECT room INTO _old_room_id
 	FROM Sessions
 	WHERE offering_id = _offering_id 
 		AND sid = _session_id;
+		
 	IF (_new_room_id = _old_room_id) THEN
 		RAISE EXCEPTION 'Specified room is same as current room.';
-	END IF;
-	
-	IF (get_session_timestamp(_offering_id, _session_id) < LOCALTIMESTAMP) THEN
-		RAISE EXCEPTION 'Specified course session has already started.';
 	END IF;
 	
 	SELECT seating_capacity INTO _new_capacity
 	FROM Rooms
 	WHERE rid = _new_room_id;
+	
 	IF (get_session_num_registrations(_offering_id, _session_id) > _new_capacity) THEN
 		RAISE EXCEPTION 'Number of registrations for specified course session exceeds seating capacity of specified room.';
 	END IF;
 	
-	SELECT date INTO _session_date, start_time INTO _session_start, duration INTO _session_duration
+	SELECT date INTO _session_date, start_time INTO _session_start, duration INTO _course_duration
 	FROM CourseOfferingSessions
 	WHERE offering_id = _offering_id 
 		AND sid = _session_id;
-	IF (NOT is_session_allowed(_new_room_id, _session_date, _session_start, _session_duration)) THEN
-		RAISE EXCEPTION 'Specified session clashes with another session held in specified room.';
+		
+	IF (NOT is_session_allowed(_new_room_id, _session_date, _session_start, _course_duration)) THEN
+		RAISE EXCEPTION 'Specified course session clashes with another session held in specified room.';
 	END IF;
 	
 	UPDATE Sessions
