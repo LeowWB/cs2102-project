@@ -1126,8 +1126,54 @@ $$ LANGUAGE plpgsql;
 --22
 /* This routine is used to change the room for a course session. The inputs to the routine include the following: course offering identifier, session number, and identifier of the new room. If the course session has not yet started and the update request is valid, the routine will process the request with the necessary updates. Note that update request should not be performed if the number of registrations for the session exceeds the seating capacity of the new room. */
 CREATE OR REPLACE PROCEDURE update_room(_offering_id int, _session_id int, _new_room_id int) AS $$
+DECLARE
+	_old_room_id int;
+	_new_capacity int;
+	_session_date date;
+	_session_start int;
+	_session_duration int;
 BEGIN
-
+	IF (NOT does_offering_exist(_offering_id)) THEN
+		RAISE EXCEPTION 'Specified course offering does not exist.';
+	END IF;
+	IF (NOT does_session_exist(_offering_id, _session_id)) THEN
+		RAISE EXCEPTION 'Specified course session does not exist.';
+	END IF;
+	IF (NOT does_room_exist(_new_room_id)) THEN
+		RAISE EXCEPTION 'Specified room does not exist.';
+	END IF;
+	
+	SELECT room INTO _old_room_id
+	FROM Sessions
+	WHERE offering_id = _offering_id 
+		AND sid = _session_id;
+	IF (_new_room_id = _old_room_id) THEN
+		RAISE EXCEPTION 'Specified room is same as current room.';
+	END IF;
+	
+	IF (get_session_timestamp(_offering_id, _session_id) < LOCALTIMESTAMP) THEN
+		RAISE EXCEPTION 'Specified course session has already started.';
+	END IF;
+	
+	SELECT seating_capacity INTO _new_capacity
+	FROM Rooms
+	WHERE rid = _new_room_id;
+	IF (get_session_num_registrations(_offering_id, _session_id) > _new_capacity) THEN
+		RAISE EXCEPTION 'Number of registrations for specified course session exceeds seating capacity of specified room.';
+	END IF;
+	
+	SELECT date INTO _session_date, start_time INTO _session_start, duration INTO _session_duration
+	FROM CourseOfferingSessions
+	WHERE offering_id = _offering_id 
+		AND sid = _session_id;
+	IF (NOT is_session_allowed(_new_room_id, _session_date, _session_start, _session_duration)) THEN
+		RAISE EXCEPTION 'Specified session clashes with another session held in specified room.';
+	END IF;
+	
+	UPDATE Sessions
+	SET room = _new_room_id
+	WHERE offering_id = _offering_id
+		AND sid = _session_id;
 END;
 $$ LANGUAGE plpgsql;
 
