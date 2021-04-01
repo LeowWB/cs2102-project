@@ -15,17 +15,11 @@ CREATE OR REPLACE FUNCTION get_latest_credit_card(_cust_id int)
 RETURNS Credit_cards AS $$
 BEGIN
 	RETURN QUERY
-	WITH CustCC AS (
-		SELECT *
-		FROM Credit_cards
-		WHERE cust_id = _cust_id
-	)
 	SELECT *
-	FROM CustCC
-	WHERE from_date = (
-		SELECT max(from_date)
-		FROM CustCC
-	);
+	FROM Credit_cards
+	WHERE cust_id = _cust_id
+	ORDER BY from_date DESC
+	LIMIT 1;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -33,22 +27,16 @@ CREATE OR REPLACE FUNCTION get_latest_course_package(_cust_id int)
 RETURNS Buys AS $$
 BEGIN
 	RETURN QUERY
-	WITH CustBCC AS (
-		SELECT B.date, B.package_id, B.number, B.num_remaining_redemptions, CC.cust_id
-		FROM Buys B
-		JOIN Credit_cards CC ON B.number = CC.number
-		WHERE cust_id = _cust_id
-	)
-	SELECT date, package_id, number, num_remaining_redemptions
-	FROM CustBCC
-	WHERE date = (
-		SELECT max(date) 
-		FROM CustBCC
-	);
+	SELECT B.date, B.package_id, B.number, B.num_remaining_redemptions
+	FROM Buys B
+	JOIN Credit_cards CC ON B.number = CC.number
+	WHERE cust_id = _cust_id
+	ORDER BY B.date DESC
+	LIMIT 1;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_seating_capacity(_offering_id int, _session_id int)
+CREATE OR REPLACE FUNCTION get_session_seating_capacity(_offering_id int, _session_id int)
 RETURNS int AS $$
 BEGIN
 	RETURN QUERY
@@ -168,7 +156,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION is_session_available(_offering_id int, _session_id int)
 RETURNS boolean AS $$
 BEGIN
-	RETURN (get_seating_capacity(_offering_id, _session_id) - get_session_num_registrations(_offering_id, _session_id) > 0);
+	RETURN (get_session_seating_capacity(_offering_id, _session_id) - get_session_num_registrations(_offering_id, _session_id) > 0);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -241,33 +229,21 @@ BEGIN
 		RETURN;
 	END IF;
 	
-	WITH RegCC AS (
-		SELECT REG.date, CC.number, REG.sid, REG.offering_id
-		FROM Registers REG
-		JOIN Credit_cards CC ON REG.number = CC.number
-		WHERE CC.cust_id = _cust_id
-			AND REG.offering_id = _offering_id
-	)
-	SELECT (sid, date, number) INTO registers_r
-	FROM RegCC
-	WHERE date = (
-		SELECT max(date)
-		FROM RegCC
-	);
+	SELECT (REG.sid, REG.date, CC.number) INTO registers_r
+	FROM Registers REG
+	JOIN Credit_cards CC ON REG.number = CC.number
+	WHERE CC.cust_id = _cust_id
+		AND REG.offering_id = _offering_id
+	ORDER BY REG.date DESC
+	LIMIT 1;
 	
-	WITH RedCC AS (
-		SELECT RED.buys_date, RED.package_id, CC.number, RED.date, RED.sid, RED.offering_id
-		FROM Redeems RED INTO redeems_sid
-		JOIN Credit_cards CC ON RED.number = CC.number
-		WHERE CC.cust_id = _cust_id
-			AND RED.offering_id = _offering_id;
-	)
-	SELECT (sid, date, number, package_id, buys_date) INTO redeems_r
-	FROM RedCC
-	WHERE date = (
-		SELECT max(date)
-		FROM RedCC
-	);
+	SELECT (RED.sid, RED.date, CC.number, RED.package_id, RED.buys_date) INTO redeems_r
+	FROM Redeems RED
+	JOIN Credit_cards CC ON RED.number = CC.number
+	WHERE CC.cust_id = _cust_id
+		AND RED.offering_id = _offering_id;
+	ORDER BY RED.date DESC
+	LIMIT 1;
 	
 	IF (registers_r IS NULL) THEN
 		paid_by := 'course_package';
