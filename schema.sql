@@ -224,6 +224,7 @@ create table Registers
     primary key (date, number, sid, offering_id),
     foreign key (number) references Credit_cards (number),
     foreign key (sid, offering_id) references Sessions (sid, offering_id)
+		on delete cascade
 );
 
 drop table if exists Redeems cascade;
@@ -238,6 +239,7 @@ create table Redeems
     primary key (buys_date, package_id, number, date, sid, offering_id),
     foreign key (buys_date, package_id, number) references Buys (date, package_id, number),
     foreign key (sid, offering_id) references Sessions (sid, offering_id)
+		on delete cascade
 );
 
 drop table if exists Cancels cascade;
@@ -252,6 +254,7 @@ create table Cancels
     primary key (cust_id, date, sid, offering_id),
     foreign key (cust_id) references Customers (cust_id),
     foreign key (sid, offering_id) references Sessions (sid, offering_id)
+		on delete cascade
 );
 
 drop table if exists Pay_slips cascade;
