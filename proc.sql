@@ -1408,7 +1408,11 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION promote_courses() 
 RETURNS TABLE(cust_id int, cust_name text, course_area text, course_id int, course_title text, launch_date date, reg_deadline date, course_fees int) AS $$
 BEGIN
-
+	-- get_inactive_customers() (did not register for an offering in last 6 months)
+	-- get_interested_course_areas(cust_id) (areas in last 3 offerings cust had)
+	--     if never registered for offering, assume all course_areas are interest
+	-- return 1 record for each inactive customer,
+	-- Sort in ascending order of cust_id and offering reg_deadline
 END;
 $$ LANGUAGE plpgsql;
 
