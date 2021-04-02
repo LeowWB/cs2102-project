@@ -474,6 +474,7 @@ CREATE OR REPLACE PROCEDURE add_employee(_name text, _address text, _phone text,
 DECLARE
 	_job_type text;
 	_emp_id int;
+	_area text;
 BEGIN
 	IF ((_category = 'administrator' OR _category = 'manager') AND _status = 'part_time') THEN
 		RAISE EXCEPTION 'Administrators or managers cannot be part-time employees.';
@@ -701,7 +702,7 @@ BEGIN
 				CONTINUE WHEN (NOT is_session_legal(_hour, _course_duration));
 				
 				IF (is_instructor_session_allowed(_emp.eid, _date, _hour, _course_duration)) THEN
-					array_append(_avail_hours, _hour);
+					_avail_hours := array_append(_avail_hours, _hour);
 				END IF;
 				
 				_hour := _hour + 1;
@@ -765,7 +766,7 @@ BEGIN
 				CONTINUE WHEN (NOT is_session_legal(_hour, 1));
 				
 				IF (is_session_allowed(_room.rid, _date, _hour, 1)) THEN
-					array_append(_avail_hours, _hour);
+					_avail_hours := array_append(_avail_hours, _hour);
 				END IF;
 				
 				_hour := _hour + 1;
@@ -792,6 +793,7 @@ CREATE OR REPLACE PROCEDURE add_course_offering(_offering_id int, _course_id int
 DECLARE
 	_instr_id int;
 	_session_num int;
+	_session session_info;
 BEGIN
 	IF (NOT does_course_exist(_course_id)) THEN
 		RAISE EXCEPTION 'Specified course does not exist.';
@@ -801,15 +803,15 @@ BEGIN
 	END IF;
 
 	IF _target_reg > get_offering_seating_capacity(_offering_id) THEN
-		RAISE EXCEPTION "Target registration exceeds course offering seating capacity."
+		RAISE EXCEPTION 'Target registration exceeds course offering seating capacity.';
 	END IF;
 	IF cardinality(_sessions) <= 0 THEN
-		RAISE EXCEPTION "A course offering must have at least 1 session!"
+		RAISE EXCEPTION 'A course offering must have at least 1 session!';
 	END IF;
 	IF _reg_deadline + 10 > _launch_date THEN
-		RAISE EXCEPTION "Offering registration deadline must be at least 10 days before offering start date!"
+		RAISE EXCEPTION 'Offering registration deadline must be at least 10 days before offering start date!';
 	END IF;
-	_session_num := 1
+	_session_num := 1;
 	FOREACH _session IN ARRAY _sessions LOOP
 		IF (NOT does_room_exist(_session.room_id)) THEN
 			RAISE EXCEPTION 'One of the specified rooms does not exist.';
@@ -818,14 +820,14 @@ BEGIN
 			SELECT 1
 			FROM find_instructors(_course_id, _session.date, _session.start_time)
 		) THEN
-			RAISE EXCEPTION "No instructor available to teach 1 of the sessions!"
+			RAISE EXCEPTION 'No instructor available to teach 1 of the sessions!';
 		END IF;
-		_instr_id := SELECT emp_id
-					 FROM find_instructors(_course_id, _session.date, _session.start_time)
-					 LIMIT 1;
-		add_session(_offering_id, _session_num, _session.date, _session.start_time, _instr_id, _session.room_id);
+		SELECT emp_id INTO _instr_id
+		FROM find_instructors(_course_id, _session.date, _session.start_time)
+		LIMIT 1;
+		CALL add_session(_offering_id, _session_num, _session.date, _session.start_time, _instr_id, _session.room_id);
 		_session_num := _session_num + 1;
-	END LOOP
+	END LOOP;
 	INSERT INTO Offerings(offering_id, course_id, launch_date, fees, target_number_registrations, registration_deadline, handler)
 	VALUES(_offering_id, _course_id, _launch_date, _course_fees, _target_reg, _reg_deadline, _admin_id);
 END;
@@ -847,7 +849,7 @@ RETURNS TABLE(name text, num_free_sessions int, sale_end_date date, price int) A
 DECLARE
 	_curr_date date;
 BEGIN
-	_curr_date := SELECT CURRENT_DATE;
+	_curr_date := CURRENT_DATE;
 	RETURN QUERY
 	SELECT name, num_free_registrations, sale_end_date, price
 	FROM Course_packages
@@ -867,7 +869,7 @@ BEGIN
 	END IF;
 	r := get_package_if_available_for_purchase(_package_id);
 	IF r IS NULL THEN
-		RAISE EXCEPTION "Package is not available for purchase!"
+		RAISE EXCEPTION 'Package is not available for purchase!';
 	END IF;
 	_cc_num := get_latest_credit_card(_cust_id);
 	INSERT INTO Buys(date, package_id, number, num_remaining_redemptions)
@@ -893,7 +895,7 @@ BEGIN
 	_cc_num := get_latest_credit_card(_cust_id);
 	r := get_most_recent_package(_cc_num);
 	IF r IS NULL THEN
-		RAISE EXCEPTION "Customer has not bought a package before."
+		RAISE EXCEPTION 'Customer has not bought a package before.';
 	END IF;
 	IF r.num_remaining_redemptions >= 1 THEN
 		-- Active package
@@ -903,11 +905,11 @@ BEGIN
 	ELSE
 		-- All sessions have been redeemed
 		SELECT S.date INTO _most_recent_session_date
-		FROM Redeems R JOIN Sessions S ON R.sid = S.sid, R.offering_id = S.offering_id
-		WHERE buys_date = r.date, package_id = r.package_id, number = _cc_num
+		FROM Redeems R JOIN Sessions S ON R.sid = S.sid AND R.offering_id = S.offering_id
+		WHERE buys_date = r.date AND package_id = r.package_id AND number = _cc_num
 		ORDER BY S.date desc;
 		-- Check if package is partially active (one session at least 7 days later)
-		_curr_date = SELECT CURRENT_DATE;
+		_curr_date = CURRENT_DATE;
 		IF NOT _curr_date + 7 > _most_recent_session_date THEN
 			-- Partially active!
 			_session_info := get_redeemed_sessions(r.date, r.package_id, _cc_num);
@@ -915,6 +917,7 @@ BEGIN
 			RETURN to_json(_pkg_info);
 		END IF;
 		-- No message or return if package is inactive
+	END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -940,13 +943,13 @@ BEGIN
 	END IF;
 
 	RETURN QUERY
-	SELECT CS.date, CS.start_time, E.name, _num_rem_seats
+	SELECT CS.date, CS.start_time, E.name, (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid))
 	FROM CourseOfferingSessions CS 
 	JOIN Employees E ON CS.instructor = E.eid
 	JOIN Rooms R ON CS.room = R.rid
 	WHERE CS.offering_id = _offering_id 
 		AND CS.registration_deadline >= CURRENT_DATE
-		AND (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid)) AS _num_rem_seats > 0
+		AND (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid)) > 0
 	ORDER BY CS.date, CS.start_time;
 END;
 $$ LANGUAGE plpgsql;
@@ -1128,10 +1131,10 @@ BEGIN
 	END IF;
 	IF (_session.paid_by = 'course_package') THEN
 		IF (_within_grace_period) THEN
-			_package_credit := 1
+			_package_credit := 1;
 			
 			UPDATE Buys
-			SET num_remaining_redemptions := num_remaining_redemptions + _package_credit
+			SET num_remaining_redemptions = num_remaining_redemptions + _package_credit
 			WHERE date = _session.package_buys_date
 				AND package_id = _session.course_package_id
 				AND number = _session.cc_num;
@@ -1149,7 +1152,7 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to change the instructor for a course session. The inputs to the routine include the following: course offering identifier, session number, and identifier of the new instructor. If the course session has not yet started and the update request is valid, the routine will process the request with the necessary updates. */
 CREATE OR REPLACE PROCEDURE update_instructor(_offering_id int, _session_id int, _new_instructor_id int) AS $$
 DECLARE
-	_old_instructor_id;
+	_old_instructor_id int;
 	_new_instructor record;
 	_session_date date;
 	_session_start int;
@@ -1190,7 +1193,7 @@ BEGIN
 	FROM Instructors
 	WHERE eid = _new_instructor_id;
 	
-	SELECT date INTO _session_date, start_time INTO _session_start, duration INTO _course_duration, area INTO _course_area
+	SELECT date, start_time, duration, area INTO _session_date, _session_start, _course_duration, _course_area
 	FROM CourseOfferingSessions
 	WHERE offering_id = _offering_id
 		AND sid = _session_id;
@@ -1258,7 +1261,7 @@ BEGIN
 		RAISE EXCEPTION 'Number of registrations for specified course session exceeds seating capacity of specified room.';
 	END IF;
 	
-	SELECT date INTO _session_date, start_time INTO _session_start, duration INTO _course_duration
+	SELECT date, start_time, duration INTO _session_date, _session_start, _course_duration
 	FROM CourseOfferingSessions
 	WHERE offering_id = _offering_id 
 		AND sid = _session_id;
@@ -1308,7 +1311,7 @@ BEGIN
 		RAISE EXCEPTION 'Specified room does not exist.';
 	END IF;
 	IF offering_reg_deadline_passed(_offering_id, _date) THEN
-		RAISE EXCEPTION "Course offering registration deadline has passed, unable to add session."
+		RAISE EXCEPTION 'Course offering registration deadline has passed, unable to add session.';
 	END IF;
 	INSERT INTO Sessions(sid, offering_id, instructor, date, start_time, room)
 	VALUES(_session_num, _offering_id, _instructor_id, _date, _start_time, _room_id);
@@ -1323,7 +1326,7 @@ DECLARE
 	_curs CURSOR FOR (
 		SELECT eid, name, salary_type, get_work_days(salary_type, join_date, depart_date) AS num_work_days, get_work_hours(eid, salary_type) AS num_work_hours, hourly_rate, monthly_salary, calculate_salary(eid, salary_type, join_date, depart_date, monthly_salary, hourly_rate) AS amount_paid INTO r
 		FROM Employees LEFT JOIN Full_time_Emp LEFT JOIN Part_time_Emp
-		ORDER BY eid;
+		ORDER BY eid
 	);
 	r record;
 	_curr_date date;
@@ -1348,7 +1351,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION promote_courses() 
 RETURNS TABLE(cust_id int, cust_name text, course_area text, course_id int, course_title text, launch_date date, reg_deadline date, course_fees int) AS $$
 BEGIN
-	RETURN NULL;
+	
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1357,7 +1360,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION top_packages(_n int) 
 RETURNS TABLE(package_id int, num_free_sessions int, price int, start_date date, end_date date, num_packages_sold int) AS $$
 BEGIN
-	RETURN NULL;
+	
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1366,7 +1369,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION popular_courses() 
 RETURNS TABLE(course_id int, course_title text, course_area text, num_offerings int, num_latest_regs int) AS $$
 BEGIN
-	RETURN NULL;
+	
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1375,15 +1378,15 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION view_summary_report(_num_months int) 
 RETURNS TABLE(year int, month int, total_salary_paid int, total_package_sales int, total_reg_fees int, total_refunded_fees int, total_redemptions int) AS $$
 BEGIN
-	RETURN NULL;
+	
 END;
 $$ LANGUAGE plpgsql;
 
 --30
 /* This routine is used to view a report on the sales generated by each manager. The routine returns a table of records consisting of the following information for each manager: manager name, total number of course areas that are managed by the manager, total number of course offerings that ended this year (i.e., the course offering’s end date is within this year) that are managed by the manager, total net registration fees for all the course offerings that ended this year that are managed by the manager, the course offering title (i.e., course title) that has the highest total net registration fees among all the course offerings that ended this year that are managed by the manager; if there are ties, list all these top course offering titles. The total net registration fees for a course offering is defined to be the sum of the total registration fees paid for the course offering via credit card payment (excluding any refunded fees due to cancellations) and the total redemption registration fees for the course offering. The redemption registration fees for a course offering refers to the registration fees for a course offering that is paid via a redemption from a course package; this registration fees is given by the price of the course package divided by the number of sessions included in the course package (rounded down to the nearest dollar). There must be one output record for each manager in the company and the output is to be sorted by ascending order of manager name. */
 CREATE OR REPLACE FUNCTION view_manager_report() 
-RETURNS TABLE(manager_name text, total_num_areas int, total_offerings int, total_reg_fees int, highest_total_fees_offering text, ) AS $$
+RETURNS TABLE(manager_name text, total_num_areas int, total_offerings int, total_reg_fees int, highest_total_fees_offering text) AS $$
 BEGIN
-	RETURN NULL;
+	
 END;
 $$ LANGUAGE plpgsql;
