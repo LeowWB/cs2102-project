@@ -1425,6 +1425,14 @@ BEGIN
 		INSERT INTO Pay_slips(payment_date, amount, num_work_hours, num_work_days, eid)
 		VALUES(_curr_date, r.amount_paid, r.num_work_hours, r.num_work_days, r.eid);	
 
+		emp_id := r.eid;
+		emp_name := r.name;
+		emp_status := r.salary_type;
+		num_work_days := r.num_work_days;
+		num_work_hours := r.num_work_hours;
+		hourly_rate := r.hourly_rate;
+		monthly_salary := r.monthly_salary;
+		amount_paid := r.amount_paid;
 		RETURN NEXT;
 	END LOOP;
 	CLOSE _curs;
@@ -1447,8 +1455,60 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to find the top N course packages in terms of the total number of packages sold for this year (i.e., the package’s start date is within this year). The input to the routine is a positive integer number N. The routine returns a table of records consisting of the following information for each of the top N course packages: package identifier, number of included free course sessions, price of package, start date, end date, and number of packages sold. The output is sorted in descending order of number of packages sold followed by descending order of price of package. In the event that there are multiple packages that tie for the top Nth position, all these packages should be included in the output records; thus, the output table could have more than N records. It is also possible for the output table to have fewer than N records if N is larger than the number of packages launched this year. */
 CREATE OR REPLACE FUNCTION top_packages(_n int) 
 RETURNS TABLE(package_id int, num_free_sessions int, price int, start_date date, end_date date, num_packages_sold int) AS $$
+DECLARE
+	_curr_year int;
+	_package record;
+	_n_count int;
+	_index int;
 BEGIN
-	
+	SELECT extract(year FROM now()) INTO _curr_year;
+
+	RETURN QUERY
+	SELECT package_id, num_free_registrations, price, sale_start_date, sale_end_date, count(*) 
+	FROM Buys NATURAL JOIN Course_packages
+	WHERE date >= make_date(_curr_year, 1, 1)
+	GROUP BY package_id
+	ORDER BY count(*) desc, price desc
+	LIMIT _n;
+
+	-- to check for tied packages, get packages again but offset by N, 
+	--    check highest if tied, if yes, RETURN NEXT, LOOP till not tied 
+	_index := _n;
+	SELECT count(*) INTO _n_count
+	FROM Buys NATURAL JOIN Course_packages
+	WHERE date >= make_date(_curr_year, 1, 1)
+	GROUP BY package_id
+	ORDER BY count(*) desc, price desc
+	OFFSET _n - 1
+	LIMIT 1;
+	LOOP
+		SELECT package_id, num_free_registrations, price, sale_start_date, sale_end_date, count(*) AS count INTO _package
+		FROM Buys NATURAL JOIN Course_packages
+		WHERE date >= make_date(_curr_year, 1, 1)
+		GROUP BY package_id
+		ORDER BY count(*) desc, price desc
+		OFFSET _index
+		LIMIT 1;
+
+		-- Only have N or less than N records
+		IF _package IS NULL THEN
+			EXIT;
+		END IF;
+
+		IF _package.count = _n_count THEN
+			package_id := _package.package_id;
+			num_free_sessions := _package.num_free_registrations;
+			price := _package.price;
+			start_date := _package.sale_start_date;
+			end_date := _package.sale_end_date;
+			num_packages_sold := _package.count;
+			RETURN NEXT;
+		ELSE
+			EXIT;
+		END IF;
+		-- Increment
+		_index := _index + 1;
+	END LOOP;
 END;
 $$ LANGUAGE plpgsql;
 
