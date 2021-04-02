@@ -1,9 +1,15 @@
-CREATE OR REPLACE TYPE employee_status AS ENUM ('full_time', 'part_time');
-CREATE OR REPLACE TYPE employee_category AS ENUM ('administrator', 'manager', 'instructor');
-CREATE OR REPLACE TYPE session_info AS (date date, start_time int, room_id int);
-CREATE OR REPLACE TYPE payment_method AS ENUM ('credit_card', 'course_package');
-CREATE OR REPLACE TYPE redeemed_session_info AS (course_name text, session_date date, session_start_hour int);
-CREATE OR REPLACE TYPE course_package_info AS (pkg_name text, purchase_date timestamp, price int, num_free_sessions int, num_unredeemed_sessions int, redeemed_sessions_info redeemed_session_info[]);
+DROP TYPE IF EXISTS employee_status CASCADE;
+DROP TYPE IF EXISTS employee_category CASCADE;
+DROP TYPE IF EXISTS session_info CASCADE;
+DROP TYPE IF EXISTS payment_method CASCADE;
+DROP TYPE IF EXISTS redeemed_session_info CASCADE;
+DROP TYPE IF EXISTS course_package_info CASCADE;
+CREATE TYPE employee_status AS ENUM ('full_time', 'part_time');
+CREATE TYPE employee_category AS ENUM ('administrator', 'manager', 'instructor');
+CREATE TYPE session_info AS (date date, start_time int, room_id int);
+CREATE TYPE payment_method AS ENUM ('credit_card', 'course_package');
+CREATE TYPE redeemed_session_info AS (course_name text, session_date date, session_start_hour int);
+CREATE TYPE course_package_info AS (pkg_name text, purchase_date timestamp, price int, num_free_sessions int, num_unredeemed_sessions int, redeemed_sessions_info redeemed_session_info[]);
 
 CREATE OR REPLACE VIEW CourseOfferingSessions AS 
 	SELECT C.course_id, C.title, C.description, C.duration, C.area, O.offering_id, O.launch_date, O.fees, O.target_number_registrations, O.registration_deadline, O.handler, S.sid, S.instructor, S.date, S.start_time, S.room
@@ -13,186 +19,139 @@ CREATE OR REPLACE VIEW CourseOfferingSessions AS
 
 CREATE OR REPLACE FUNCTION does_customer_exist(_cust_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT EXISTS(
 		SELECT 1
 		FROM Customers
 		WHERE cust_id = _cust_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION does_employee_exist(_emp_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT EXISTS(
 		SELECT 1
 		FROM Employees
 		WHERE eid = _emp_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION does_administrator_exist(_admin_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT EXISTS(
 		SELECT 1
 		FROM Administrators
 		WHERE eid = _admin_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION does_instructor_exist(_instr_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT EXISTS(
 		SELECT 1
 		FROM Instructors
 		WHERE eid = _instr_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION does_course_exist(_course_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT EXISTS(
 		SELECT 1
 		FROM Courses
 		WHERE course_id = _course_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION does_offering_exist(_offering_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT EXISTS(
 		SELECT 1
 		FROM Offerings 
 		WHERE offering_id = _offering_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION does_session_exist(_offering_id int, _session_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT EXISTS(
 		SELECT 1
 		FROM Sessions 
 		WHERE offering_id = _offering_id
 			AND sid = _session_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION does_room_exist(_room_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT EXISTS(
 		SELECT 1
 		FROM Rooms 
 		WHERE rid = _room_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_latest_credit_card(_cust_id int) 
 RETURNS Credit_cards AS $$
-BEGIN
-	RETURN QUERY
 	SELECT *
 	FROM Credit_cards
 	WHERE cust_id = _cust_id
 	ORDER BY from_date DESC
 	LIMIT 1;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_latest_course_package(_cust_id int) 
 RETURNS Buys AS $$
-BEGIN
-	RETURN QUERY
 	SELECT B.date, B.package_id, B.number, B.num_remaining_redemptions
 	FROM Buys B
 	JOIN Credit_cards CC ON B.number = CC.number
 	WHERE cust_id = _cust_id
 	ORDER BY B.date DESC
 	LIMIT 1;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_session_seating_capacity(_offering_id int, _session_id int)
 RETURNS int AS $$
-BEGIN
-	RETURN QUERY
 	SELECT R.seating_capacity
 	FROM Sessions S
 	JOIN Rooms R ON S.room = R.rid
 	WHERE S.offering_id = _offering_id
 		AND S.sid = _session_id;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_instructor_month_hours(_emp_id int, _year int, _month int) 
-RETURNS int AS $$
-BEGIN
-	RETURN QUERY
+RETURNS bigint AS $$
 	SELECT COALESCE(SUM(duration), 0)
 	FROM CourseOfferingSessions
 	WHERE instructor = _emp_id 
 		AND EXTRACT(year FROM date) = _year 
 		AND EXTRACT(month FROM date) = _month;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_session_timestamp(_offering_id int, _session_id int) 
 RETURNS timestamp AS $$
-BEGIN
-	RETURN QUERY
-	SELECT date + interval (start_time::text || ' hour')
+	SELECT date + (start_time * INTERVAL '1 hour')
 	FROM Sessions
 	WHERE offering_id = _offering_id
-		AND sid = _session_id
-END;
-$$ LANGUAGE plpgsql;
+		AND sid = _session_id;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION do_ranges_overlap(_start1 int, _end1 int, _start2 int, _end2 int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN _end1 > _start2 AND _start1 < _end2;
-END;
-$$ LANGUAGE plpgsql;
+	SELECT _end1 > _start2 AND _start1 < _end2;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION is_session_legal(_start_time int, _duration int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN _start_time >= 9 AND (_start_time + _duration) <= 18 AND NOT do_sessions_clash(_start_time, _duration, 12, 2);
-END;
-$$ LANGUAGE plpgsql;
+	SELECT _start_time >= 9 AND (_start_time + _duration) <= 18 AND NOT do_sessions_clash(_start_time, _duration, 12, 2);
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION do_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN do_ranges_overlap(_start1, _start1 + _duration1, _start2, _start2 + _duration2);
-END;
-$$ LANGUAGE plpgsql;
+	SELECT do_ranges_overlap(_start1, _start1 + _duration1, _start2, _start2 + _duration2);
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION is_session_allowed(_room_id int, _date date, _start_time int, _duration int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT NOT EXISTS(
 		SELECT 1
 		FROM CourseOfferingSessions
@@ -200,8 +159,7 @@ BEGIN
 			AND date = _date 
 			AND do_sessions_clash(_start_time, _duration, start_time, duration)
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION do_instructor_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) 
 RETURNS boolean AS $$
@@ -215,8 +173,6 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION is_instructor_session_allowed(_emp_id int, _date date, _start_time int, _duration int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT NOT EXISTS(
 		SELECT 1
 		FROM CourseOfferingSessions
@@ -224,20 +180,15 @@ BEGIN
 			AND date = _date 
 			AND do_instructor_sessions_clash(_start_time, _duration, start_time, duration)
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION does_session_exceed_part_time_hours(_emp_id int, _date date, _duration int)
 RETURNS boolean AS $$
-BEGIN
-	RETURN (get_instructor_month_hours(_emp_id, EXTRACT(year FROM _date), EXTRACT(month FROM _date)) + duration > 30);
-END;
-$$ LANGUAGE plpgsql;
+	SELECT (get_instructor_month_hours(_emp_id, EXTRACT(year FROM _date)::int, EXTRACT(month FROM _date)::int) + _duration > 30);
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_session_num_registrations(_offering_id int, _session_id int) 
-RETURNS int AS $$
-BEGIN
-	RETURN QUERY
+RETURNS bigint AS $$
 	SELECT
 	(
 		SELECT COUNT(*) 
@@ -254,20 +205,15 @@ BEGIN
 		FROM Cancels 
 		WHERE offering_id = _offering_id AND sid = _session_id
 	);
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION is_session_available(_offering_id int, _session_id int)
 RETURNS boolean AS $$
-BEGIN
-	RETURN (get_session_seating_capacity(_offering_id, _session_id) - get_session_num_registrations(_offering_id, _session_id) > 0);
-END;
-$$ LANGUAGE plpgsql;
+	SELECT (get_session_seating_capacity(_offering_id, _session_id) - get_session_num_registrations(_offering_id, _session_id) > 0);
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION is_registered_for_offering(_cust_id int, _offering_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT
 	((
 		SELECT COUNT(*) 
@@ -289,13 +235,10 @@ BEGIN
 		WHERE cust_id = _cust_id 
 			AND offering_id = _offering_id
 	)) > 0;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION is_registered_for_session(_cust_id int, _offering_id int, _session_id int) 
 RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
 	SELECT
 	((
 		SELECT COUNT(*) 
@@ -320,8 +263,7 @@ BEGIN
 			AND offering_id = _offering_id
 			AND sid = _session_id
 	)) > 0;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_registered_session(_cust_id int, _offering_id int, OUT session_id int, OUT paid_by payment_method, OUT paid_date timestamp, OUT cc_num text, OUT course_package_id int, OUT package_buys_date timestamp)
 RETURNS record AS $$
@@ -345,7 +287,7 @@ BEGIN
 	FROM Redeems RED
 	JOIN Credit_cards CC ON RED.number = CC.number
 	WHERE CC.cust_id = _cust_id
-		AND RED.offering_id = _offering_id;
+		AND RED.offering_id = _offering_id
 	ORDER BY RED.date DESC
 	LIMIT 1;
 	
@@ -368,46 +310,39 @@ BEGIN
 		cc_num := redeems_r.number;
 		course_package_id := redeems_r.package_id;
 		package_buys_date := redeems_r.buys_date;
+	END IF;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_offering_seating_capacity(_offering_id int) RETURNS int AS $$
-BEGIN
-	RETURN QUERY
+CREATE OR REPLACE FUNCTION get_offering_seating_capacity(_offering_id int) 
+RETURNS bigint AS $$
 	SELECT SUM(seating_capacity)
 	FROM Sessions S JOIN Rooms R ON S.room = R.rid
 	WHERE offering_id = _offering_id;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION offering_reg_deadline_passed(_offering_id int, _date date) RETURNS boolean AS $$
-BEGIN
-	RETURN QUERY
+CREATE OR REPLACE FUNCTION offering_reg_deadline_passed(_offering_id int, _date date) 
+RETURNS boolean AS $$
 	SELECT registration_deadline > _date
 	FROM Offerings
 	WHERE offering_id = _offering_id;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION get_package_if_available_for_purchase(IN _package_id int, OUT name text, OUT num_free_registrations int, OUT sale_end_date date, OUT price int) RETURNS record AS $$
-BEGIN
-	RETURN QUERY
+CREATE OR REPLACE FUNCTION get_package_if_available_for_purchase(IN _package_id int, OUT name text, OUT num_free_registrations int, OUT sale_end_date date, OUT price int) 
+RETURNS record AS $$
 	SELECT name, num_free_registrations, sale_end_date, price
 	FROM get_available_course_packages()
 	WHERE package_id = _package_id;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION get_most_recent_package(IN _cc_num varchar(19), OUT date timestamp, OUT package_id int, OUT num_remaining_redemptions int, OUT name text, OUT price int, OUT num_free_registrations int) RETURNS record AS $$
-BEGIN
-	RETURN QUERY
-	SELECT date, package_id, num_remaining_redemptions, name, price, num_free_registrations
+CREATE OR REPLACE FUNCTION get_most_recent_package(IN _cc_num varchar(19), OUT date timestamp, OUT package_id int, OUT num_remaining_redemptions int, OUT name text, OUT price int, OUT num_free_registrations int) 
+RETURNS record AS $$
+	SELECT B.date, B.package_id, B.num_remaining_redemptions, P.name, P.price, P.num_free_registrations
 	FROM Buys B JOIN Course_packages P ON B.package_id = P.package_id 
 	WHERE number = _cc_num
 	ORDER BY date desc
 	LIMIT 1;
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_redeemed_sessions(_date timestamp, _pkg_id int, _cc_num varchar(19)) RETURNS anyarray AS $$
 DECLARE
@@ -416,7 +351,7 @@ DECLARE
 		SELECT S.offering_id, S.date, S.start_time
 		FROM Redeems R JOIN Sessions S ON R.sid = S.sid, R.offering_id = S.offering_id
 		WHERE buys_date = _date, package_id = _pkg_id, number = _cc_num
-		ORDER BY S.date, S.start_time;
+		ORDER BY S.date, S.start_time
 	);
 	r record;
 	_first_access boolean;
@@ -448,12 +383,12 @@ DECLARE
 	_curs CURSOR FOR (
 		SELECT offering_id, course_id, registration_deadline, fees
 		FROM Offerings
-		WHERE _curr_date <= registration_deadline;
+		WHERE _curr_date <= registration_deadline
 	);
 	r record;
 	_curr_date date;
 BEGIN
-	_curr_date := SELECT CURRENT_DATE;
+	_curr_date := CURRENT_DATE;
 	OPEN _curs;
 	LOOP
 		FETCH _curs INTO r;
@@ -485,7 +420,7 @@ DECLARE
 BEGIN
 	-- Work days are not applicable to part-time employees
 	IF salary_type = "part_time" THEN
-		RETURN NULL
+		RETURN NULL;
 	END IF;
 	SELECT extract(days FROM date_trunc('month', now()) + interval '1 month - 1 day') INTO _num_days_in_month;
 	SELECT extract(month FROM now()) INTO _curr_month;
@@ -499,18 +434,22 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_work_hours(_eid int, _salary_type char(9)) RETURNS int AS $$
+CREATE OR REPLACE FUNCTION get_work_hours(_eid int, _salary_type char(9)) RETURNS bigint AS $$
+DECLARE 
+	_hours bigint;
 BEGIN
 	-- Work hours are not applicable to full-time employees 
 	IF _salary_type = "full_time" THEN
-		RETURN NULL
+		RETURN NULL;
 	END IF;
-	RETURN QUERY
-	SELECT sum(duration)
+
+	SELECT sum(duration) INTO _hours
 	FROM CourseOfferingSessions
 	WHERE instructor = _eid
 		AND extract(month from now()) = extract(month from date)
 	GROUP BY instructor;
+	
+	RETURN _hours;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -525,6 +464,7 @@ BEGIN
 		-- salary_type is either "full_time" or "part_time"
 		_num_work_quantity := get_work_hours(_eid, _salary_type);
 		RETURN _hourly_rate * _num_work_quantity;
+	END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -534,7 +474,8 @@ CREATE OR REPLACE PROCEDURE add_employee(_name text, _address text, _phone text,
 DECLARE
 	_job_type text;
 	_emp_id int;
-BEGIN;
+	_area text;
+BEGIN
 	IF ((_category = 'administrator' OR _category = 'manager') AND _status = 'part_time') THEN
 		RAISE EXCEPTION 'Administrators or managers cannot be part-time employees.';
 	END IF;
@@ -761,7 +702,7 @@ BEGIN
 				CONTINUE WHEN (NOT is_session_legal(_hour, _course_duration));
 				
 				IF (is_instructor_session_allowed(_emp.eid, _date, _hour, _course_duration)) THEN
-					array_append(_avail_hours, _hour);
+					_avail_hours := array_append(_avail_hours, _hour);
 				END IF;
 				
 				_hour := _hour + 1;
@@ -825,7 +766,7 @@ BEGIN
 				CONTINUE WHEN (NOT is_session_legal(_hour, 1));
 				
 				IF (is_session_allowed(_room.rid, _date, _hour, 1)) THEN
-					array_append(_avail_hours, _hour);
+					_avail_hours := array_append(_avail_hours, _hour);
 				END IF;
 				
 				_hour := _hour + 1;
@@ -852,6 +793,7 @@ CREATE OR REPLACE PROCEDURE add_course_offering(_offering_id int, _course_id int
 DECLARE
 	_instr_id int;
 	_session_num int;
+	_session session_info;
 BEGIN
 	IF (NOT does_course_exist(_course_id)) THEN
 		RAISE EXCEPTION 'Specified course does not exist.';
@@ -861,15 +803,15 @@ BEGIN
 	END IF;
 
 	IF _target_reg > get_offering_seating_capacity(_offering_id) THEN
-		RAISE EXCEPTION "Target registration exceeds course offering seating capacity."
+		RAISE EXCEPTION 'Target registration exceeds course offering seating capacity.';
 	END IF;
 	IF cardinality(_sessions) <= 0 THEN
-		RAISE EXCEPTION "A course offering must have at least 1 session!"
+		RAISE EXCEPTION 'A course offering must have at least 1 session!';
 	END IF;
 	IF _reg_deadline + 10 > _launch_date THEN
-		RAISE EXCEPTION "Offering registration deadline must be at least 10 days before offering start date!"
+		RAISE EXCEPTION 'Offering registration deadline must be at least 10 days before offering start date!';
 	END IF;
-	_session_num := 1
+	_session_num := 1;
 	FOREACH _session IN ARRAY _sessions LOOP
 		IF (NOT does_room_exist(_session.room_id)) THEN
 			RAISE EXCEPTION 'One of the specified rooms does not exist.';
@@ -878,14 +820,14 @@ BEGIN
 			SELECT 1
 			FROM find_instructors(_course_id, _session.date, _session.start_time)
 		) THEN
-			RAISE EXCEPTION "No instructor available to teach 1 of the sessions!"
+			RAISE EXCEPTION 'No instructor available to teach 1 of the sessions!';
 		END IF;
-		_instr_id := SELECT emp_id
-					 FROM find_instructors(_course_id, _session.date, _session.start_time)
-					 LIMIT 1;
-		add_session(_offering_id, _session_num, _session.date, _session.start_time, _instr_id, _session.room_id);
+		SELECT emp_id INTO _instr_id
+		FROM find_instructors(_course_id, _session.date, _session.start_time)
+		LIMIT 1;
+		CALL add_session(_offering_id, _session_num, _session.date, _session.start_time, _instr_id, _session.room_id);
 		_session_num := _session_num + 1;
-	END LOOP
+	END LOOP;
 	INSERT INTO Offerings(offering_id, course_id, launch_date, fees, target_number_registrations, registration_deadline, handler)
 	VALUES(_offering_id, _course_id, _launch_date, _course_fees, _target_reg, _reg_deadline, _admin_id);
 END;
@@ -907,7 +849,7 @@ RETURNS TABLE(name text, num_free_sessions int, sale_end_date date, price int) A
 DECLARE
 	_curr_date date;
 BEGIN
-	_curr_date := SELECT CURRENT_DATE;
+	_curr_date := CURRENT_DATE;
 	RETURN QUERY
 	SELECT name, num_free_registrations, sale_end_date, price
 	FROM Course_packages
@@ -927,7 +869,7 @@ BEGIN
 	END IF;
 	r := get_package_if_available_for_purchase(_package_id);
 	IF r IS NULL THEN
-		RAISE EXCEPTION "Package is not available for purchase!"
+		RAISE EXCEPTION 'Package is not available for purchase!';
 	END IF;
 	_cc_num := get_latest_credit_card(_cust_id);
 	INSERT INTO Buys(date, package_id, number, num_remaining_redemptions)
@@ -953,7 +895,7 @@ BEGIN
 	_cc_num := get_latest_credit_card(_cust_id);
 	r := get_most_recent_package(_cc_num);
 	IF r IS NULL THEN
-		RAISE EXCEPTION "Customer has not bought a package before."
+		RAISE EXCEPTION 'Customer has not bought a package before.';
 	END IF;
 	IF r.num_remaining_redemptions >= 1 THEN
 		-- Active package
@@ -963,11 +905,11 @@ BEGIN
 	ELSE
 		-- All sessions have been redeemed
 		SELECT S.date INTO _most_recent_session_date
-		FROM Redeems R JOIN Sessions S ON R.sid = S.sid, R.offering_id = S.offering_id
-		WHERE buys_date = r.date, package_id = r.package_id, number = _cc_num
+		FROM Redeems R JOIN Sessions S ON R.sid = S.sid AND R.offering_id = S.offering_id
+		WHERE buys_date = r.date AND package_id = r.package_id AND number = _cc_num
 		ORDER BY S.date desc;
 		-- Check if package is partially active (one session at least 7 days later)
-		_curr_date = SELECT CURRENT_DATE;
+		_curr_date = CURRENT_DATE;
 		IF NOT _curr_date + 7 > _most_recent_session_date THEN
 			-- Partially active!
 			_session_info := get_redeemed_sessions(r.date, r.package_id, _cc_num);
@@ -975,6 +917,7 @@ BEGIN
 			RETURN to_json(_pkg_info);
 		END IF;
 		-- No message or return if package is inactive
+	END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1000,13 +943,13 @@ BEGIN
 	END IF;
 
 	RETURN QUERY
-	SELECT CS.date, CS.start_time, E.name, _num_rem_seats
+	SELECT CS.date, CS.start_time, E.name, (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid))
 	FROM CourseOfferingSessions CS 
 	JOIN Employees E ON CS.instructor = E.eid
 	JOIN Rooms R ON CS.room = R.rid
 	WHERE CS.offering_id = _offering_id 
 		AND CS.registration_deadline >= CURRENT_DATE
-		AND (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid)) AS _num_rem_seats > 0
+		AND (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid)) > 0
 	ORDER BY CS.date, CS.start_time;
 END;
 $$ LANGUAGE plpgsql;
@@ -1188,10 +1131,10 @@ BEGIN
 	END IF;
 	IF (_session.paid_by = 'course_package') THEN
 		IF (_within_grace_period) THEN
-			_package_credit := 1
+			_package_credit := 1;
 			
 			UPDATE Buys
-			SET num_remaining_redemptions := num_remaining_redemptions + _package_credit
+			SET num_remaining_redemptions = num_remaining_redemptions + _package_credit
 			WHERE date = _session.package_buys_date
 				AND package_id = _session.course_package_id
 				AND number = _session.cc_num;
@@ -1209,7 +1152,7 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to change the instructor for a course session. The inputs to the routine include the following: course offering identifier, session number, and identifier of the new instructor. If the course session has not yet started and the update request is valid, the routine will process the request with the necessary updates. */
 CREATE OR REPLACE PROCEDURE update_instructor(_offering_id int, _session_id int, _new_instructor_id int) AS $$
 DECLARE
-	_old_instructor_id;
+	_old_instructor_id int;
 	_new_instructor record;
 	_session_date date;
 	_session_start int;
@@ -1250,7 +1193,7 @@ BEGIN
 	FROM Instructors
 	WHERE eid = _new_instructor_id;
 	
-	SELECT date INTO _session_date, start_time INTO _session_start, duration INTO _course_duration, area INTO _course_area
+	SELECT date, start_time, duration, area INTO _session_date, _session_start, _course_duration, _course_area
 	FROM CourseOfferingSessions
 	WHERE offering_id = _offering_id
 		AND sid = _session_id;
@@ -1318,7 +1261,7 @@ BEGIN
 		RAISE EXCEPTION 'Number of registrations for specified course session exceeds seating capacity of specified room.';
 	END IF;
 	
-	SELECT date INTO _session_date, start_time INTO _session_start, duration INTO _course_duration
+	SELECT date, start_time, duration INTO _session_date, _session_start, _course_duration
 	FROM CourseOfferingSessions
 	WHERE offering_id = _offering_id 
 		AND sid = _session_id;
@@ -1368,7 +1311,7 @@ BEGIN
 		RAISE EXCEPTION 'Specified room does not exist.';
 	END IF;
 	IF offering_reg_deadline_passed(_offering_id, _date) THEN
-		RAISE EXCEPTION "Course offering registration deadline has passed, unable to add session."
+		RAISE EXCEPTION 'Course offering registration deadline has passed, unable to add session.';
 	END IF;
 	INSERT INTO Sessions(sid, offering_id, instructor, date, start_time, room)
 	VALUES(_session_num, _offering_id, _instructor_id, _date, _start_time, _room_id);
@@ -1383,7 +1326,7 @@ DECLARE
 	_curs CURSOR FOR (
 		SELECT eid, name, salary_type, get_work_days(salary_type, join_date, depart_date) AS num_work_days, get_work_hours(eid, salary_type) AS num_work_hours, hourly_rate, monthly_salary, calculate_salary(eid, salary_type, join_date, depart_date, monthly_salary, hourly_rate) AS amount_paid INTO r
 		FROM Employees LEFT JOIN Full_time_Emp LEFT JOIN Part_time_Emp
-		ORDER BY eid;
+		ORDER BY eid
 	);
 	r record;
 	_curr_date date;
@@ -1421,7 +1364,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION top_packages(_n int) 
 RETURNS TABLE(package_id int, num_free_sessions int, price int, start_date date, end_date date, num_packages_sold int) AS $$
 BEGIN
-
+	
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1430,7 +1373,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION popular_courses() 
 RETURNS TABLE(course_id int, course_title text, course_area text, num_offerings int, num_latest_regs int) AS $$
 BEGIN
-
+	
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1439,15 +1382,15 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION view_summary_report(_num_months int) 
 RETURNS TABLE(year int, month int, total_salary_paid int, total_package_sales int, total_reg_fees int, total_refunded_fees int, total_redemptions int) AS $$
 BEGIN
-
+	
 END;
 $$ LANGUAGE plpgsql;
 
 --30
 /* This routine is used to view a report on the sales generated by each manager. The routine returns a table of records consisting of the following information for each manager: manager name, total number of course areas that are managed by the manager, total number of course offerings that ended this year (i.e., the course offering’s end date is within this year) that are managed by the manager, total net registration fees for all the course offerings that ended this year that are managed by the manager, the course offering title (i.e., course title) that has the highest total net registration fees among all the course offerings that ended this year that are managed by the manager; if there are ties, list all these top course offering titles. The total net registration fees for a course offering is defined to be the sum of the total registration fees paid for the course offering via credit card payment (excluding any refunded fees due to cancellations) and the total redemption registration fees for the course offering. The redemption registration fees for a course offering refers to the registration fees for a course offering that is paid via a redemption from a course package; this registration fees is given by the price of the course package divided by the number of sessions included in the course package (rounded down to the nearest dollar). There must be one output record for each manager in the company and the output is to be sorted by ascending order of manager name. */
 CREATE OR REPLACE FUNCTION view_manager_report() 
-RETURNS TABLE(manager_name text, total_num_areas int, total_offerings int, total_reg_fees int, highest_total_fees_offering text, ) AS $$
+RETURNS TABLE(manager_name text, total_num_areas int, total_offerings int, total_reg_fees int, highest_total_fees_offering text) AS $$
 BEGIN
-
+	
 END;
 $$ LANGUAGE plpgsql;
