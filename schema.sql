@@ -515,8 +515,9 @@ returns trigger as $$
         -- inserting into full/part time no trigger because:
         -- -- FK enforces already;
 
-        if not exists(select 1 from Full_time_Emp where eid = changedEid) and
-           not exists(select 1 from Part_time_Emp where eid = changedEid)
+        if exists(select 1 from Employees where eid = changedEid) and
+           not exists(select 1 from Full_time_Emp where eid = changedEid) and
+           not exists(select 1 from Part_time_Emp where eid = changedEid)           
            then
             raise 'All employees must either be part or full time';
         end if;
@@ -561,7 +562,8 @@ returns trigger as $$
         -- inserting into admin/instr/manager no trigger because:
         -- -- FK enforces already;
 
-        if not exists(select 1 from Administrators where eid = changedEid) and
+        if exists(select 1 from Employees where eid = changedEid) and
+           not exists(select 1 from Administrators where eid = changedEid) and
            not exists(select 1 from Instructors where eid = changedEid) and
            not exists(select 1 from Managers where eid = changedEid)
            then
