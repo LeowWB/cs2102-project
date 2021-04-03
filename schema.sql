@@ -418,11 +418,16 @@ create or replace function one_active_package_per_customer_f()
 returns trigger as $$
     declare
         has_other_package integer;
+        cid integer;
     begin
+        select cust_id into cid
+        from Credit_cards
+        where number = NEW.number;
+
         select 1 into has_other_package
-        from Buys
+        from Buys natural join Credit_cards
         where (
-            number = NEW.number and
+            cust_id = cid and
             num_remaining_redemptions * NEW.num_remaining_redemptions <> 0 and
             (
                 date <> NEW.date or
@@ -437,7 +442,7 @@ returns trigger as $$
     end;
 $$ language plpgsql;
 
-drop trigger if exists one_active_package_per_customer_t on Sessions;
+drop trigger if exists one_active_package_per_customer_t on Buys;
 create trigger one_active_package_per_customer_t
 before insert or update on Buys
 for each row execute function one_active_package_per_customer_f();
