@@ -140,14 +140,19 @@ RETURNS boolean AS $$
 	SELECT _end1 > _start2 AND _start1 < _end2;
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION is_session_legal(_start_time int, _duration int) 
-RETURNS boolean AS $$
-	SELECT _start_time >= 9 AND (_start_time + _duration) <= 18 AND NOT do_sessions_clash(_start_time, _duration, 12, 2);
-$$ LANGUAGE sql;
-
 CREATE OR REPLACE FUNCTION do_sessions_clash(_start1 int, _duration1 int, _start2 int, _duration2 int) 
 RETURNS boolean AS $$
 	SELECT do_ranges_overlap(_start1, _start1 + _duration1, _start2, _start2 + _duration2);
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION is_session_legal(_date date)
+RETURNS boolean AS $$
+	SELECT EXTRACT(dow FROM _date)::int IN (1, 2, 3, 4, 5);
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION is_session_legal(_start_time int, _duration int)
+RETURNS boolean AS $$
+	SELECT _start_time >= 9 AND (_start_time + _duration) <= 18 AND NOT do_sessions_clash(_start_time, _duration, 12, 2);
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION is_session_allowed(_room_id int, _date date, _start_time int, _duration int) 
@@ -721,8 +726,8 @@ BEGIN
 	FROM Courses 
 	WHERE course_id = _course_id;
 	
-	IF (NOT is_session_legal(_session_start_time, _course_duration)) THEN
-		RETURN;
+	IF (NOT (is_session_legal(_session_date) AND is_session_legal(_session_start_time, _course_duration))) THEN
+		RAISE EXCEPTION 'Specified session is illegal.';
 	END IF;
 
 	OPEN _emp_curs;
@@ -749,8 +754,9 @@ CREATE OR REPLACE FUNCTION get_available_instructors(_course_id int, _start_date
 RETURNS TABLE(emp_id int, name text, month_hours int, avail_day date, avail_hours int[]) AS $$
 DECLARE
 	_emp_curs CURSOR FOR (
-		SELECT eid, I.name AS name, job_type
-		FROM Instructors I 
+		SELECT I.eid, E.name, I.job_type
+		FROM Instructors I
+		JOIN Employees E ON I.eid = E.eid
 		JOIN Specializes SP ON I.eid = SP.eid 
 		JOIN Courses C ON SP.name = C.area
 		WHERE C.course_id = _course_id
@@ -775,32 +781,32 @@ BEGIN
 	LOOP
 		FETCH _emp_curs INTO _emp;
 		EXIT WHEN NOT FOUND;
-		
+
 		_date := _start_date;
 		WHILE (_date <= _end_date) LOOP
-			_month_hours := get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _date), EXTRACT(month FROM _date));
-			
-			CONTINUE WHEN (_emp.job_type = 'part_time_instructor' AND (_month_hours + duration > 30));
-			
-			_avail_hours := ARRAY[];
-			_hour := 9;
-			WHILE (_hour < 18) LOOP
-				CONTINUE WHEN (NOT is_session_legal(_hour, _course_duration));
+			IF (is_session_legal(_date)) THEN
+				_month_hours := get_instructor_month_hours(_emp.eid, EXTRACT(year FROM _date)::int, EXTRACT(month FROM _date)::int);
 				
-				IF (is_instructor_session_allowed(_emp.eid, _date, _hour, _course_duration)) THEN
-					_avail_hours := array_append(_avail_hours, _hour);
+				IF (NOT (_emp.job_type = 'part_time_instructor' AND (_month_hours + _course_duration > 30))) THEN
+					_avail_hours := ARRAY[]::int[];
+					_hour := 9;
+					WHILE (_hour < 18) LOOP
+						IF (is_session_legal(_hour, _course_duration) AND is_instructor_session_allowed(_emp.eid, _date, _hour, _course_duration)) THEN
+							_avail_hours := array_append(_avail_hours, _hour);
+						END IF;
+						
+						_hour := _hour + 1;
+					END LOOP;
+					
+					IF (cardinality(_avail_hours) > 0) THEN
+						emp_id := _emp.eid;
+						name := _emp.name;
+						month_hours := _month_hours;
+						avail_day := _date;
+						avail_hours := _avail_hours;
+						RETURN NEXT;
+					END IF;
 				END IF;
-				
-				_hour := _hour + 1;
-			END LOOP;
-			
-			IF (cardinality(_avail_hours) > 0) THEN
-				emp_id := _emp.eid;
-				name := _emp.name;
-				month_hours := _month_hours;
-				avail_day := _date;
-				avail_hours := _avail_hours;
-				RETURN NEXT;
 			END IF;
 			
 			_date := _date + interval '1 day';
@@ -816,8 +822,8 @@ Returns empty table if the given session is illegal. */
 CREATE OR REPLACE FUNCTION find_rooms(_session_date date, _session_start_time int, _session_duration int) 
 RETURNS TABLE(room_id int) AS $$
 BEGIN
-	IF (NOT is_session_legal(_session_start_time, _course_duration)) THEN
-		RETURN;
+	IF (NOT (is_session_legal(_session_date) AND is_session_legal(_session_start_time, _session_duration))) THEN
+		RAISE EXCEPTION 'Specified session is illegal.';
 	END IF;
 	
 	RETURN QUERY
@@ -846,24 +852,24 @@ BEGIN
 		
 		_date := _start_date;
 		WHILE (_date <= _end_date) LOOP
-			_avail_hours := ARRAY[];
-			_hour := 9;
-			WHILE (_hour < 18) LOOP
-				CONTINUE WHEN (NOT is_session_legal(_hour, 1));
+			IF (is_session_legal(_date)) THEN
+				_avail_hours := ARRAY[]::int[];
+				_hour := 9;
+				WHILE (_hour < 18) LOOP
+					IF (is_session_legal(_hour, 1) AND is_session_allowed(_room.rid, _date, _hour, 1)) THEN
+						_avail_hours := array_append(_avail_hours, _hour);
+					END IF;
+					
+					_hour := _hour + 1;
+				END LOOP;
 				
-				IF (is_session_allowed(_room.rid, _date, _hour, 1)) THEN
-					_avail_hours := array_append(_avail_hours, _hour);
+				IF (cardinality(_avail_hours) > 0) THEN
+					room_id := _room.rid;
+					room_capacity := _room.seating_capacity;
+					avail_day := _date;
+					avail_hours := _avail_hours;
+					RETURN NEXT;
 				END IF;
-				
-				_hour := _hour + 1;
-			END LOOP;
-			
-			IF (cardinality(_avail_hours) > 0) THEN
-				room_id := _room.rid;
-				room_capacity := _room.seating_capacity;
-				avail_day := _date;
-				avail_hours := _avail_hours;
-				RETURN NEXT;
 			END IF;
 			
 			_date := _date + interval '1 day';
@@ -1253,11 +1259,7 @@ BEGIN
 	IF (NOT does_employee_exist(_new_instructor_id)) THEN
 		RAISE EXCEPTION 'Specified employee does not exist.';
 	END IF;
-	IF (SELECT NOT EXISTS(
-		SELECT 1
-		FROM Instructors
-		WHERE eid = _new_instructor_id
-	)) THEN
+	IF (NOT does_instructor_exist(_new_instructor_id)) THEN
 		RAISE EXCEPTION 'Specified employee is not an instructor.';
 	END IF;
 	
