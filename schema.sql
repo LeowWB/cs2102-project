@@ -388,7 +388,7 @@ returns trigger as $$
         select 1 into has_clash
         from Sessions S inner join Offerings O on S.offering_id = O.offering_id inner join Courses C on O.course_id = C.course_id
         where (
-            S.sid <> NEW.sid
+            S.sid <> NEW.sid and
             S.room = NEW.room and
             S.date = NEW.date and
             (

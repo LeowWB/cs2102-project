@@ -333,13 +333,6 @@ RETURNS boolean AS $$
 	WHERE offering_id = _offering_id;
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION get_package_if_available_for_purchase(IN _package_id int, OUT name text, OUT num_free_registrations int, OUT sale_end_date date, OUT price int) 
-RETURNS record AS $$
-	SELECT name, num_free_registrations, sale_end_date, price
-	FROM get_available_course_packages()
-	WHERE package_id = _package_id;
-$$ LANGUAGE sql;
-
 CREATE OR REPLACE FUNCTION get_most_recent_package(IN _cc_num varchar(19), OUT date timestamp, OUT package_id int, OUT num_remaining_redemptions int, OUT name text, OUT price int, OUT num_free_registrations int) 
 RETURNS record AS $$
 	SELECT B.date, B.package_id, B.num_remaining_redemptions, P.name, P.price, P.num_free_registrations
@@ -349,13 +342,15 @@ RETURNS record AS $$
 	LIMIT 1;
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION get_redeemed_sessions(_date timestamp, _pkg_id int, _cc_num varchar(19)) RETURNS anyarray AS $$
+CREATE OR REPLACE FUNCTION get_redeemed_sessions(_date timestamp, _pkg_id int, _cc_num varchar(19)) RETURNS redeemed_session_info[] AS $$
 DECLARE
 	_arr redeemed_session_info[];
 	_curs CURSOR FOR (
 		SELECT S.offering_id, S.date, S.start_time
-		FROM Redeems R JOIN Sessions S ON R.sid = S.sid, R.offering_id = S.offering_id
-		WHERE buys_date = _date, package_id = _pkg_id, number = _cc_num
+		FROM Redeems R JOIN Sessions S ON R.sid = S.sid AND R.offering_id = S.offering_id
+		WHERE buys_date = _date 
+			AND package_id = _pkg_id 
+			AND number = _cc_num
 		ORDER BY S.date, S.start_time
 	);
 	r record;
@@ -534,9 +529,9 @@ DECLARE
 	r record;
 	_num_registered_offerings int;
 BEGIN
-	OPEN _curs;
+	OPEN _cust_curs;
 	LOOP
-		FETCH _curs INTO r;
+		FETCH _cust_curs INTO r;
 		EXIT WHEN NOT FOUND;
 		-- get_interested_course_areas(cust_id) (areas in last 3 offerings cust had)
 		SELECT count(area) INTO _num_registered_offerings
@@ -555,22 +550,22 @@ BEGIN
 			WHERE registration_deadline > CURRENT_DATE;
 		END IF;
 	END LOOP;
-	CLOSE _curs;
+	CLOSE _cust_curs;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION get_num_reg_offerings(_offering_id int) 
-RETURNS bigint AS $$
-	SELECT sum(num_reg)
+RETURNS int AS $$
+	SELECT sum(num_reg)::INTEGER
 	FROM (
-		SELECT get_session_num_registrations(offering_id, sid) AS num_reg
+		SELECT get_session_num_registrations(offering_id, sid) AS num_reg, offering_id
 		FROM Offerings NATURAL JOIN Sessions
-		WHERE offering_id = _offering_id
-		GROUP BY offering_id );
+		WHERE offering_id = _offering_id ) as Registrations
+	GROUP BY offering_id;
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION num_reg_latest_offering(_course_id int) 
-RETURNS bigint AS $$
+RETURNS int AS $$
 	WITH CO AS (
 		SELECT * 
 		FROM Courses NATURAL JOIN Offerings
@@ -586,6 +581,8 @@ $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_popular_courses() 
 RETURNS TABLE(course_id int, course_title text, course_area text, num_offerings int, num_reg_latest_offering int) AS $$
+BEGIN
+	RETURN QUERY
 	-- Courses with >= 2 offerings this year
 	WITH C AS (
 		SELECT course_id, title, area
@@ -594,7 +591,6 @@ RETURNS TABLE(course_id int, course_title text, course_area text, num_offerings 
 		GROUP BY course_id
 		HAVING count(*) >= 2 )
 	-- Courses whose later offerings have higher reg than earlier ones
-	RETURN QUERY
 	SELECT course_id, course_title, course_area, count(*) AS num_offerings, num_reg_latest_offering(course_id) AS num_reg
 	FROM (
 		SELECT course_id, course_title, course_area
@@ -606,13 +602,13 @@ RETURNS TABLE(course_id int, course_title text, course_area text, num_offerings 
 				AND C.course_id = O1.course_id
 				AND C.course_id = O2.course_id
 				AND get_num_reg_offerings(O1.offering_id) <= get_num_reg_offerings(O2.offering_id) )
-		) NATURAL JOIN Offerings
+		) as C2 NATURAL JOIN Offerings
 	WHERE extract(year FROM launch_date) = extract(year FROM now())
 	GROUP BY course_id;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_num_course_areas(_eid int) RETURNS int as $$
+CREATE OR REPLACE FUNCTION get_num_course_areas(_eid int) RETURNS bigint as $$
 	SELECT count(*)
 	FROM Course_areas
 	WHERE manager = _eid;
@@ -620,8 +616,8 @@ $$ LANGUAGE sql;
 
 -- Date of latest session of offering
 CREATE OR REPLACE FUNCTION get_offering_end_date(_offering_id int) RETURNS date as $$
-	SELECT date
-	FROM Offerings NATURAL JOIN Sessions
+	SELECT S.date
+	FROM Offerings O NATURAL JOIN Sessions S
 	WHERE offering_id = _offering_id
 		AND date >= ALL (
 			select date
@@ -631,8 +627,8 @@ CREATE OR REPLACE FUNCTION get_offering_end_date(_offering_id int) RETURNS date 
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_num_course_offerings(_eid int) RETURNS int as $$
-	SELECT count(*) AS count, 
-	FROM Offerings NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.manager
+	SELECT count(*)::INTEGER AS count
+	FROM Offerings NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
 	WHERE manager = _eid
 		AND extract(year FROM get_offering_end_date(offering_id)) = extract(year FROM now());
 $$ LANGUAGE sql;
@@ -641,7 +637,7 @@ CREATE OR REPLACE FUNCTION get_total_reg_fees_managed(IN eid int, OUT net_fees i
 BEGIN
 	WITH O AS (
 		SELECT *
-		FROM Offerings NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.manager
+		FROM Offerings NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
 		WHERE manager = _eid
 			AND extract(year FROM get_offering_end_date(offering_id)) = extract(year FROM now())
 	)
@@ -659,7 +655,7 @@ BEGIN
 			FROM O NATURAL JOIN Redeems NATURAL JOIN Course_packages
 		) AS redeem_fees, title
 		FROM O
-	);
+	) as Fees;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1041,18 +1037,26 @@ $$ LANGUAGE plpgsql;
 
 --12
 /* This routine is used to retrieve the course packages that are available for sale. The routine returns a table of records with the following information for each available course package: package name, number of free course sessions, end date for promotional package, and the price of the package. */
+DROP FUNCTION IF EXISTS get_available_course_packages();
 CREATE OR REPLACE FUNCTION get_available_course_packages() 
-RETURNS TABLE(name text, num_free_sessions int, sale_end_date date, price int) AS $$
+RETURNS TABLE(name text, num_free_sessions int, sale_end_date date, price int, package_id int) AS $$
 DECLARE
 	_curr_date date;
 BEGIN
 	_curr_date := CURRENT_DATE;
 	RETURN QUERY
-	SELECT name, num_free_registrations, sale_end_date, price
+	SELECT name, num_free_registrations, sale_end_date, price, package_id
 	FROM Course_packages
 	WHERE _curr_date > sale_start_date and _curr_date < sale_end_date;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_package_if_available_for_purchase(IN _package_id int, OUT name text, OUT num_free_registrations int, OUT sale_end_date date, OUT price int) 
+RETURNS record AS $$
+	SELECT name, num_free_sessions AS num_free_registrations, sale_end_date, price
+	FROM get_available_course_packages()
+	WHERE package_id = _package_id;
+$$ LANGUAGE sql;
 
 --13
 /* This routine is used when a customer requests to purchase a course package. The inputs to the routine include the customer and course package identifiers. If the purchase transaction is valid, the routine will process the purchase with the necessary updates (e.g., payment). */
@@ -1517,7 +1521,7 @@ RETURNS TABLE(emp_id int, emp_name text, emp_status employee_status, num_work_da
 DECLARE
 	_curs CURSOR FOR (
 		SELECT eid, name, salary_type, get_work_days(salary_type, join_date, depart_date) AS num_work_days, get_work_hours(eid, salary_type) AS num_work_hours, hourly_rate, monthly_salary, calculate_salary(eid, salary_type, join_date, depart_date, monthly_salary, hourly_rate) AS amount_paid INTO r
-		FROM Employees LEFT JOIN Full_time_Emp LEFT JOIN Part_time_Emp
+		FROM Employees NATURAL LEFT JOIN Full_time_Emp NATURAL LEFT JOIN Part_time_Emp
 		ORDER BY eid
 	);
 	r record;
@@ -1554,7 +1558,7 @@ BEGIN
 	RETURN QUERY
 	SELECT *
 	FROM get_unsorted_courses_to_promote()
-	ORDER BY cust_id, registration_deadline;
+	ORDER BY cust_id, reg_deadline;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1677,14 +1681,14 @@ RETURNS TABLE(manager_name text, total_num_areas int, total_offerings int, total
 DECLARE
 	_curs CURSOR FOR (
 		SELECT name, eid
-		FROM Managers NATURAL JOIN Employees;
+		FROM Managers NATURAL JOIN Employees
 	);
 	_manager record;
 	_total_fees_record record;
 	_highest_reg_fees int;
 BEGIN
 	_highest_reg_fees := 0;
-	OPEN _curs
+	OPEN _curs;
 	LOOP
 		FETCH _curs INTO _manager;
 		EXIT WHEN NOT FOUND;
