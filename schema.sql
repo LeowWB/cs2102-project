@@ -294,7 +294,11 @@ returns trigger as $$
         if num_sessions = 0 then
             raise 'Each course offering consists of one or more sessions';
         end if;
-        return null;
+        if (tg_op = 'INSERT') then
+            return null;
+        else
+            return OLD;
+        end if;
     end;
 $$ language plpgsql;
 
