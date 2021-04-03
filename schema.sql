@@ -388,6 +388,7 @@ returns trigger as $$
         select 1 into has_clash
         from Sessions S inner join Offerings O on S.offering_id = O.offering_id inner join Courses C on O.course_id = C.course_id
         where (
+            S.sid <> NEW.sid
             S.room = NEW.room and
             S.date = NEW.date and
             (
@@ -642,7 +643,7 @@ returns trigger as $$
         new_duration integer;
     begin
         select duration from Courses C join Offerings O2 on C.course_id = O2.course_id where O2.offering_id = NEW.offering_id into new_duration;
-        if exists(select 1 from Sessions S inner join Offerings O on S.offering_id = O.offering_id inner join Courses C on O.course_id = C.course_id where NEW.instructor = S.instructor and S.date = NEW.date and LEAST(C.duration + S.start_time, NEW.start_time + new_duration) > GREATEST(S.start_time, NEW.start_time))  then
+        if exists(select 1 from Sessions S inner join Offerings O on S.offering_id = O.offering_id inner join Courses C on O.course_id = C.course_id where NEW.sid <> S.sid and NEW.instructor = S.instructor and S.date = NEW.date and LEAST(C.duration + S.start_time, NEW.start_time + new_duration) > GREATEST(S.start_time, NEW.start_time))  then
             raise 'An instructor cannot teach two courses simultaneously';
         end if;
         return NEW;
