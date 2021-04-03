@@ -951,6 +951,9 @@ BEGIN
 		RAISE EXCEPTION 'Offering registration deadline must be at least 10 days before offering start date!';
 	END IF;
 	_session_num := 1;
+	-- Insert into Offerings first so foreign key exists for Sessions
+	INSERT INTO Offerings(offering_id, course_id, launch_date, fees, target_number_registrations, registration_deadline, handler)
+	VALUES(_offering_id, _course_id, _launch_date, _course_fees, _target_reg, _reg_deadline, _admin_id);
 	FOREACH _session IN ARRAY _sessions LOOP
 		IF (NOT does_room_exist(_session.room_id)) THEN
 			RAISE EXCEPTION 'One of the specified rooms does not exist.';
@@ -967,8 +970,6 @@ BEGIN
 		CALL add_session(_offering_id, _session_num, _session.date, _session.start_time, _instr_id, _session.room_id);
 		_session_num := _session_num + 1;
 	END LOOP;
-	INSERT INTO Offerings(offering_id, course_id, launch_date, fees, target_number_registrations, registration_deadline, handler)
-	VALUES(_offering_id, _course_id, _launch_date, _course_fees, _target_reg, _reg_deadline, _admin_id);
 END;
 $$ LANGUAGE plpgsql;
 
