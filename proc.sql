@@ -422,7 +422,7 @@ BEGIN
 	IF salary_type = "part_time" THEN
 		RETURN NULL;
 	END IF;
-	SELECT extract(days FROM date_trunc('month', now()) + interval '1 month - 1 day') INTO _num_days_in_month;
+	SELECT extract(days FROM date_trunc('month', now()) + INTERVAL '1 month - 1 day') INTO _num_days_in_month;
 	SELECT extract(month FROM now()) INTO _curr_month;
 	SELECT extract(month FROM _join_date) INTO _join_month;
 	IF _join_month = _curr_month THEN
@@ -481,11 +481,11 @@ BEGIN
 	RETURN QUERY
 	SELECT cust_id
 	FROM Customers C NATURAL JOIN Credit_cards Cc JOIN Registers Rg ON Cc.number = Rg.number
-	WHERE Rg.date >= make_date(_curr_year, _curr_month, 1) - interval '6 months'
+	WHERE Rg.date >= make_date(_curr_year, _curr_month, 1) - INTERVAL '6 months'
 	UNION
 	SELECT cust_id
 	FROM Customers C NATURAL JOIN Credit_cards Cc JOIN Redeems Rd ON Cc.number = Rd.number
-	WHERE Rd.date >= make_date(_curr_year, _curr_month, 1) - interval '6 months';
+	WHERE Rd.date >= make_date(_curr_year, _curr_month, 1) - INTERVAL '6 months';
 END;
 $$ LANGUAGE plpgsql;
 
@@ -856,7 +856,7 @@ BEGIN
 				RETURN NEXT;
 			END IF;
 			
-			_date := _date + interval '1 day';
+			_date := _date + INTERVAL '1 day';
 		END LOOP;
 	END LOOP;
 	CLOSE _emp_curs;
@@ -919,7 +919,7 @@ BEGIN
 				RETURN NEXT;
 			END IF;
 			
-			_date := _date + interval '1 day';
+			_date := _date + INTERVAL '1 day';
 		END LOOP;
 	END LOOP;
 	CLOSE _room_curs;
@@ -1582,8 +1582,37 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to view a monthly summary report of the company’s sales and expenses for a specified number of months. The input to the routine is a number of months (say N) and the routine returns a table of records consisting of the following information for each of the last N months (starting from the current month): month and year, total salary paid for the month, total amount of sales of course packages for the month, total registration fees paid via credit card payment for the month, total amount of refunded registration fees (due to cancellations) for the month, and total number of course registrations via course package redemptions for the month. For example, if the number of specified months is 3 and the current month is January 2021, the output will consist of one record for each of the following three months: January 2021, December 2020, and November 2020. */
 CREATE OR REPLACE FUNCTION view_summary_report(_num_months int) 
 RETURNS TABLE(year int, month int, total_salary_paid int, total_package_sales int, total_reg_fees int, total_refunded_fees int, total_redemptions int) AS $$
+DECLARE
+	_curr_date date;
 BEGIN
-	
+	SELECT CURRENT_DATE INTO _curr_date;
+	-- Loop for _num_months times
+	FOR i in 1.._num_months LOOP
+		SELECT extract(month FROM _curr_date) INTO month;
+		SELECT extract(year FROM _curr_date) INTO year;
+		SELECT sum(amount) INTO total_salary_paid
+		FROM Pay_slips
+		WHERE extract(month FROM payment_date) = month
+			AND extract(year FROM payment_date) = year;
+		SELECT sum(price) INTO total_package_sales
+		FROM Buys NATURAL JOIN Course_packages
+		WHERE extract(month FROM date) = month
+			AND extract(year FROM date) = year;
+		SELECT sum(fees) INTO total_reg_fees
+		FROM Registers NATURAL JOIN Offerings
+		WHERE extract(month FROM date) = month
+			AND extract(year FROM date) = year;
+		SELECT sum(refund_amt) INTO total_refunded_fees
+		FROM Cancels
+		WHERE extract(month FROM date) = month
+			AND extract(year FROM date) = year;
+		SELECT count(*) INTO total_redemptions
+		FROM Redeems
+		WHERE extract(month FROM date) = month
+			AND extract(year FROM date) = year;
+		RETURN NEXT;
+		_curr_date := _curr_date - INTERVAL '1 month';
+	END LOOP;
 END;
 $$ LANGUAGE plpgsql;
 
