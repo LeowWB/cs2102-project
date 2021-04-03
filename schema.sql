@@ -294,7 +294,11 @@ returns trigger as $$
         if num_sessions = 0 then
             raise 'Each course offering consists of one or more sessions';
         end if;
-        return null;
+        if (tg_op = 'INSERT') then
+            return null;
+        else
+            return OLD;
+        end if;
     end;
 $$ language plpgsql;
 
@@ -414,11 +418,16 @@ create or replace function one_active_package_per_customer_f()
 returns trigger as $$
     declare
         has_other_package integer;
+        cid integer;
     begin
+        select cust_id into cid
+        from Credit_cards
+        where number = NEW.number;
+
         select 1 into has_other_package
-        from Buys
+        from Buys natural join Credit_cards
         where (
-            number = NEW.number and
+            cust_id = cid and
             num_remaining_redemptions * NEW.num_remaining_redemptions <> 0 and
             (
                 date <> NEW.date or
@@ -433,7 +442,7 @@ returns trigger as $$
     end;
 $$ language plpgsql;
 
-drop trigger if exists one_active_package_per_customer_t on Sessions;
+drop trigger if exists one_active_package_per_customer_t on Buys;
 create trigger one_active_package_per_customer_t
 before insert or update on Buys
 for each row execute function one_active_package_per_customer_f();
@@ -506,8 +515,9 @@ returns trigger as $$
         -- inserting into full/part time no trigger because:
         -- -- FK enforces already;
 
-        if not exists(select 1 from Full_time_Emp where eid = changedEid) and
-           not exists(select 1 from Part_time_Emp where eid = changedEid)
+        if exists(select 1 from Employees where eid = changedEid) and
+           not exists(select 1 from Full_time_Emp where eid = changedEid) and
+           not exists(select 1 from Part_time_Emp where eid = changedEid)           
            then
             raise 'All employees must either be part or full time';
         end if;
@@ -552,7 +562,8 @@ returns trigger as $$
         -- inserting into admin/instr/manager no trigger because:
         -- -- FK enforces already;
 
-        if not exists(select 1 from Administrators where eid = changedEid) and
+        if exists(select 1 from Employees where eid = changedEid) and
+           not exists(select 1 from Administrators where eid = changedEid) and
            not exists(select 1 from Instructors where eid = changedEid) and
            not exists(select 1 from Managers where eid = changedEid)
            then

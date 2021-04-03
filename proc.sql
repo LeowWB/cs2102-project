@@ -273,14 +273,14 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION get_registered_session(_cust_id int, _offering_id int, OUT session_id int, OUT paid_by payment_method, OUT paid_date timestamp, OUT cc_num text, OUT course_package_id int, OUT package_buys_date timestamp)
 RETURNS record AS $$
 DECLARE
-	registers_r record;
-	redeems_r record;
+	registers_r Registers;
+	redeems_r Redeems;
 BEGIN
 	IF (NOT is_registered_for_offering(_cust_id, _offering_id)) THEN
 		RETURN;
 	END IF;
 	
-	SELECT (REG.sid, REG.date, CC.number) INTO registers_r
+	SELECT REG.sid, REG.date, CC.number INTO registers_r.sid, registers_r.date, registers_r.number
 	FROM Registers REG
 	JOIN Credit_cards CC ON REG.number = CC.number
 	WHERE CC.cust_id = _cust_id
@@ -288,7 +288,7 @@ BEGIN
 	ORDER BY REG.date DESC
 	LIMIT 1;
 	
-	SELECT (RED.sid, RED.date, CC.number, RED.package_id, RED.buys_date) INTO redeems_r
+	SELECT RED.sid, RED.date, CC.number, RED.package_id, RED.buys_date INTO redeems_r.sid, redeems_r.date, redeems_r.number, redeems_r.package_id, redeems_r.buys_date
 	FROM Redeems RED
 	JOIN Credit_cards CC ON RED.number = CC.number
 	WHERE CC.cust_id = _cust_id
@@ -1143,7 +1143,7 @@ BEGIN
 	END IF;
 
 	RETURN QUERY
-	SELECT CS.date, CS.start_time, E.name, (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid))
+	SELECT CS.date, CS.start_time, E.name, (R.seating_capacity - get_session_num_registrations(_offering_id, CS.sid))::int
 	FROM CourseOfferingSessions CS 
 	JOIN Employees E ON CS.instructor = E.eid
 	JOIN Rooms R ON CS.room = R.rid
@@ -1168,7 +1168,7 @@ BEGIN
 	IF (NOT does_offering_exist(_offering_id)) THEN
 		RAISE EXCEPTION 'Specified course offering does not exist.';
 	END IF;
-	IF (NOT does_session_exist(_offering_id, _new_session_id)) THEN
+	IF (NOT does_session_exist(_offering_id, _session_id)) THEN
 		RAISE EXCEPTION 'Specified course session does not exist.';
 	END IF;
 
@@ -1261,10 +1261,10 @@ BEGIN
 	IF (_old_session.sid = _new_session_id) THEN
 		RAISE EXCEPTION 'Already registered for specified course session.';
 	END IF;
-	IF (get_session_timestamp(_old_session_id) < LOCALTIMESTAMP) THEN
+	IF (get_session_timestamp(_offering_id, _old_session_id) < LOCALTIMESTAMP) THEN
 		RAISE EXCEPTION 'Current course session has already started.';
 	END IF;
-	IF (get_session_timestamp(_new_session_id) < LOCALTIMESTAMP) THEN
+	IF (get_session_timestamp(_offering_id, _new_session_id) < LOCALTIMESTAMP) THEN
 		RAISE EXCEPTION 'Specified course session has already started.';
 	END IF;
 	IF (NOT is_session_available(_offering_id, _new_session_id)) THEN
@@ -1310,7 +1310,7 @@ BEGIN
 	END IF;
 
 	_session := get_registered_session(_cust_id, _offering_id);
-	_session_start := get_session_timestamp(_session.session_id);
+	_session_start := get_session_timestamp(_offering_id, _session.session_id);
 	
 	IF (_session IS NULL) THEN
 		RAISE EXCEPTION 'Not registered for specified course offering.';
@@ -1510,7 +1510,7 @@ BEGIN
 		RAISE EXCEPTION 'Course offering registration deadline has passed, unable to add session.';
 	END IF;
 	INSERT INTO Sessions(sid, offering_id, instructor, date, start_time, room)
-	VALUES(_session_num, _offering_id, _instructor_id, _date, _start_time, _room_id);
+	VALUES(_session_id, _offering_id, _instructor_id, _date, _start_time, _room_id);
 END;
 $$ LANGUAGE plpgsql;
 
