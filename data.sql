@@ -1,26 +1,13 @@
-INSERT INTO Customers
-VALUES (1, '406 Turner Shores\nWest Sigridton, ME 20391', '90761391', 'omnis', 'jacinto.lind@example.com'),
-       (2, '2980 Ebony Corner Apt. 859\nBellton, VA 99017-7381', '95010409', 'quam', 'dach.maryse@example.net'),
-       (3, '797 Jody Rest Apt. 324\nWest Augustine, MI 12631', '94021449', 'aperiam', 'molly43@example.com'),
-       (4, '8534 Maxime Keys\nSouth Bridie, OH 60303-9920', '99724688', 'maxime', 'gibson.colleen@example.com'),
-       (5, '2744 Fadel Pike Apt. 101\nMaximomouth, TX 74572', '95539476', 'eum', 'gorczany.vicky@example.com'),
-       (6, '1709 Kemmer Creek Apt. 310\nBrendanchester, SD 90759-0836', '90701822', 'quibusdam', 'rhayes@example.net'),
-       (7, '265 Ulises Expressway\nRodriguezland, RI 59097', '97501506', 'suscipit', 'leila72@example.org'),
-       (8, '1938 Jean Inlet Apt. 402\nChadrickmouth, NJ 42426-0267', '92083106', 'voluptas', 'louvenia82@example.org'),
-       (9, '413 Breitenberg Rapid Suite 403\nNew Hector, MO 08870', '96827965', 'nemo', 'savanah80@example.org'),
-       (10, '836 Dariana Gateway\nLizafort, OK 11305', '90417928', 'quae', 'abbott.tavares@example.org');
-
-INSERT INTO Credit_cards
-VALUES ('344671399807892', '5489', 4, '2004-03-15 10:09:32', '2030-04-30'),
-       ('4024007179854135', '7717', 10, '1978-09-10 04:23:17', '2023-08-08'),
-       ('4485612061643194', '4370', 7, '1989-04-18 12:06:58', '2025-11-24'),
-       ('4532006442505973', '7654', 8, '1990-02-07 10:46:04', '2023-04-11'),
-       ('4916091768888534', '8418', 1, '1977-10-24 15:35:56', '2015-10-18'),
-       ('4916424671016132', '5436', 6, '2000-04-04 23:33:25', '2022-09-28'),
-       ('5180253314420403', '3491', 2, '1977-04-05 11:14:30', '2022-08-06'),
-       ('5279615931773372', '4973', 3, '1973-08-15 02:36:01', '2023-08-11'),
-       ('5426004743132991', '2781', 5, '2015-06-21 11:16:25', '2024-01-12'),
-       ('6011784365986811', '764', 9, '2007-09-24 02:21:47', '2026-11-13');
+CALL add_customer('Jacinto Lind', '406 Turner Shores\nWest Sigridton, ME 20391', '90761391', 'jacinto.lind@example.com', '344671399807892', '2030-04-30', '5489');
+CALL add_customer('Maryse Dach', '2980 Ebony Corner Apt. 859\nBellton, VA 99017-7381', '95010409', 'dach.maryse@example.net', '4024007179854135', '2023-08-08', '7717');
+CALL add_customer('Molly Mop', '797 Jody Rest Apt. 324\nWest Augustine, MI 12631', '94021449', 'molly43@example.com', '4485612061643194', '2025-11-24', '4370');
+CALL add_customer('Colleen Gibson', '8534 Maxime Keys\nSouth Bridie, OH 60303-9920', '99724688', 'gibson.colleen@example.com', '4532006442505973', '2023-04-11', '7654');
+CALL add_customer('Vicky Gorczany', '2744 Fadel Pike Apt. 101\nMaximomouth, TX 74572', '95539476', 'gorczany.vicky@example.com', '4916091768888534', '2015-10-18', '8418');
+CALL add_customer('Rhayes Corrin', '1709 Kemmer Creek Apt. 310\nBrendanchester, SD 90759-0836', '90701822', 'rhayes36@example.com', '4916424671016132', '2022-09-28', '5436');
+CALL add_customer('Leila Torres', '265 Ulises Expressway\nRodriguezland, RI 59097', '97501506', 'leila72@example.org', '5180253314420403', '2022-08-06', '3491');
+CALL add_customer('Venia Lou', '1938 Jean Inlet Apt. 402\nChadrickmouth, NJ 42426-0267', '92083106', 'louvenia82@example.org', '5279615931773372', '2023-08-11', '4973');
+CALL add_customer('Tigre Enner', '413 Breitenberg Rapid Suite 403\nNew Hector, MO 08870', '96827965', 'savanah80@example.org', '5426004743132991', '2024-01-12', '2781');
+CALL add_customer('Tavares Abbott', '836 Dariana Gateway\nLizafort, OK 11305', '90417928', 'abbott.tavares@example.org', '6011784365986811', '2026-11-13', '764');
 
 INSERT INTO Rooms
 VALUES (1, '92773 Millie Mission\nMarquardtstad, NY 77300-6093', 466),
@@ -34,18 +21,13 @@ VALUES (1, '92773 Millie Mission\nMarquardtstad, NY 77300-6093', 466),
        (9, '267 Lesch Street\nPort Billborough, MN 36443-2798', 777),
        (10, '50170 Arjun Turnpike\nEmmettborough, IA 27098', 219);
 
-INSERT INTO Course_packages
-VALUES (1, '1980-03-01', '1982-10-11', 20, 'aliquid', 48727),
-       (2, '2002-04-22', '2002-08-28', 19, 'autem', 62670),
-       (3, '2017-08-14', '2018-04-08', 12, 'ratione', 88280),
-       (4, '1972-09-05', '2003-06-06', 11, 'molestias', 25709),
-       (5, '1969-09-05', '1970-03-08', 14, 'iste', 45381),
-       (6, '1986-04-12', '2010-12-02', 8, 'sed', 80933),
-       (7, '1969-03-01', '1970-08-20', 8, 'suscipit', 11984),
-       (8, '1977-01-01', '1977-06-22', 8, 'quo', 72244),
-       (9, '2001-06-16', '2002-02-12', 8, 'architecto', 33887),
-       (10, '1988-09-11', '2014-08-19', 8, 'debitis', 69137);
+CALL add_course_package('New Year Sale', 3, '2021-1-1', '2021-2-1', 5000);
+CALL add_course_package('April Sale', 4, '2021-4-1', '2021-4-28', 10000);
+CALL add_course_package('Bundle Sale', 8, '2021-1-2', '2021-5-1', 17000);
+CALL add_course_package('Big Bundle', 15, '2021-1-3', '2021-12-1', 30000);
+CALL add_course_package('Mid-Year Sale', 5, '2021-6-1', '2021-7-1', 11000);
 
+-- Replace with coherent data
 INSERT INTO Buys
 VALUES ('2002-09-14', 1, '344671399807892', 0),
        ('1972-06-30', 2, '4024007179854135', 7),
@@ -59,55 +41,31 @@ VALUES ('2002-09-14', 1, '344671399807892', 0),
        ('1990-10-10', 10, '6011784365986811', 4);
 
 begin transaction; -- for employees
-INSERT INTO Employees
-VALUES (1, 'part_time', 'part_time_instructor', 'Madeline Parisian', '96836734',
-        '267 Kaylie Divide\nEstherstad, CA 46624-1390', 'beverly20@example.org', '2020-10-29', '2015-08-22'),
-       (2, 'full_time', 'administrator', 'Mr. Monserrate Kohler', '96467215',
-        '359 Jamir Square Apt. 048\nLake Zackery, NH 39502-1706', 'blair.dach@example.org', '2020-10-27', '2003-04-30'),
-       (3, 'full_time', 'manager', 'Dayna Schultz', '97303635', '877 Arlene Coves Suite 434\nNew Wilson, MN 88696-8280',
-        'katelin.dietrich@example.org', '2020-12-16', '2019-11-11'),
-       (4, 'full_time', 'manager', 'Prof. Lorenz Walter V', '95298596',
-        '90722 Sienna Streets Suite 142\nWest Jerrod, DE 13419-1991', 'fadel.hellen@example.org', '2020-07-30',
-        '2011-11-06'),
-       (5, 'full_time', 'full_time_instructor', 'Cletus Jerde', '97233481',
-        '775 Martina Station Apt. 190\nSouth Elody, IN 35993-2103', 'haylie15@example.com', '2020-05-31', '1983-09-03');
-
-INSERT INTO Part_time_Emp
-VALUES (1, 1450, 'part_time');
-
-INSERT INTO Full_time_Emp
-VALUES (2, 145000, 'full_time'),
-       (3, 145000, 'full_time'),
-       (4, 145000, 'full_time'),
-       (5, 145000, 'full_time');
-
-INSERT INTO Managers VALUES
-(3, 'manager'),
-(4, 'manager');
-
-INSERT INTO Administrators VALUES
-(2, 'administrator');
-
-insert into Instructors VALUES
-(1, 'part_time_instructor'),
-(5, 'full_time_instructor');
+-- Instructors >= 1 course area, Managers >= 0, Admin = 0
+-- Ensure every course area is being managed by 1 manager ONLY
+CALL add_employee('Madeline Parisian', '267 Kaylie Divide\nEstherstad, CA 46624-1390', '96836734', 'beverly20@example.org', 'part_time', 1200, '2015-08-22', 'instructor', ARRAY[ 'databases' ]);
+CALL add_employee('Sally Wolowitz', '320 Wall Street\nRhodes Island, RI 341390', '90807762', 'wollosally@hotmail.com', 'part_time', 1300, '2017-10-7', 'instructor', ARRAY[ 'networks' ]);
+CALL add_employee('Mr. Monserrate Kohler', '359 Jamir Square Apt. 048\nLake Zackery, NH 39502-1706', '96467215', 'blair.dach@example.org', 'full_time', 300000, '2003-04-30', 'instructor', ARRAY[ 'databases', 'math' ]);
+CALL add_employee('Dayna Schultz', '877 Arlene Coves Suite 434\nNew Wilson, MN 88696-8280', '97303635', 'katelin.dietrich@example.org', 'full_time', 250000, '2019-11-11', 'manager', ARRAY[ 'math' ]);
+CALL add_employee('Prof. Lorenz Walter V', '90722 Sienna Streets Suite 142\nWest Jerrod, DE 13419-1991', '95298596', 'fadel.hellen@example.org', 'full_time', 400000, ''2011-11-06'', 'manager', ARRAY[ 'databases', 'networks' ]);
+CALL add_employee('Cletus Jerde', '775 Martina Station Apt. 190\nSouth Elody, IN 35993-2103', '97233481', 'haylie15@example.com', 'full_time', 225000, '2020-1-11', 'manager', ARRAY[ ]);
+CALL add_employee('Charlie Waltz', '23 Sentosa Cove Blk 10\nSingapore, S828696', '96215538', 'charlie.wz@google.com', 'full_time', 290000, '2016-3-21', 'administrator', ARRAY[ ]);
+CALL add_employee('Andy Lou', '108 Serenity Walk\nNew York, NY, 38696-7921', '91031294', 'andlou80@yahoo.com', 'full_time', 310000, '2012-1-10', 'administrator', ARRAY[ ]);
+CALL remove_employee(8, '2016-4-1');
 
 commit; -- for employees
 
-insert into Course_areas VALUES
-('math', 3);
-
-INSERT INTO Courses VALUES
-(1, 'CS2102', 'db', 2, 'math');
-
-INSERT INTO Specializes VALUES
-(5, 'math');
+CALL add_course('CS2102', 'Fundamentals of databases', 'databases', 2);
+CALL add_course('MA1101R', 'Linear Algebra', 'math', 2);
+CALL add_course('CS2105', 'Computer Networks', 'networks', 1);
 
 BEGIN TRANSACTION; -- for offerings
-INSERT INTO Offerings VALUES
-(1, 1, '2020-05-31', 10000, 20, '2020-05-11', 2);
+-- Try to get offerings that have past, ongoing, and available soon
+add_course_offering(_offering_id int, _course_id int, _course_fees int, _target_reg int, _launch_date date, _reg_deadline date, _admin_id int, _sessions session_info[]
+CALL add_course_offering(1, 1, 30000, 1000, '2021-1-1', '2020-4-1', 7, ARRAY[ (date'2021-1-4', 9, 1)::session_info, (date'2021-1-4', 2, 2)::session_info ]);
+CALL add_course_offering(2, 1, 30000, 800, '2021-4-1', '2020-6-1', 7, ARRAY[ (date'2021-4-5', 3, 1)::session_info, (date'2021-4-5', 2, 1)::session_info ]);
+CALL add_course_offering(3, 2, 25000, 700, '2021-2-1', '2020-6-1', 7, ARRAY[ (date'2021-3-2', 10, 3)::session_info, (date'2021-3-3', 10, 3)::session_info ]);
+CALL add_course_offering(4, 3, 40000, 500, '2021-6-1', '2020-8-1', 7, ARRAY[ (date'2021-4-5', 3, 4)::session_info, (date'2021-4-6', 9, 4)::session_info ]);
 
-INSERT INTO Sessions VALUES
-(1, 1, 5, '2020-06-01', 9, 5 );
 COMMIT; -- for offerings
 
