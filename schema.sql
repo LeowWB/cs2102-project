@@ -412,6 +412,29 @@ create trigger one_session_per_room_at_a_time_t
 before insert or update on Sessions
 for each row execute function one_session_per_room_at_a_time_f();
 
+-- number of remaining redemptions for package mustn't be more than number of free registrations
+
+create or replace function remaining_redemptions_not_more_than_free_registrations_f()
+returns trigger as $$
+    declare
+        num_free integer;
+    begin
+        select num_free_registrations into num_free
+        from Course_packages
+        where package_id = NEW.package_id;
+        if NEW.num_remaining_redemptions > num_free then
+            raise 'Number of remaining redemptions for package cannot be more than number of free registrations';
+            return NULL;
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists remaining_redemptions_not_more_than_free_registrations_t on Buys;
+create trigger remaining_redemptions_not_more_than_free_registrations_t
+before insert or update on Buys
+for each row execute function remaining_redemptions_not_more_than_free_registrations_f();
+
 -- Each customer can have at most one active or partially active package.
 
 create or replace function one_active_package_per_customer_f()
