@@ -561,14 +561,14 @@ RETURNS int AS $$
 		SELECT get_session_num_registrations(O.offering_id, S.sid) AS num_reg, O.offering_id
 		FROM Offerings O NATURAL JOIN Sessions S
 		WHERE O.offering_id = _offering_id ) as Registrations
-	GROUP BY O.offering_id;
+	GROUP BY Registrations.offering_id;
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION num_reg_latest_offering(_course_id int) 
 RETURNS int AS $$
 	WITH CO AS (
 		SELECT * 
-		FROM Courses NATURAL JOIN Offerings
+		FROM Courses C NATURAL JOIN Offerings
 		WHERE C.course_id = _course_id
 	)
 	SELECT get_num_reg_offerings(CO.offering_id)
@@ -628,7 +628,7 @@ $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_num_course_offerings(_eid int) RETURNS int as $$
 	SELECT count(*)::INTEGER AS count
-	FROM Offerings NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
+	FROM Offerings O NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
 	WHERE A.manager = _eid
 		AND extract(year FROM get_offering_end_date(O.offering_id)) = extract(year FROM now());
 $$ LANGUAGE sql;
@@ -637,7 +637,7 @@ CREATE OR REPLACE FUNCTION get_total_reg_fees_managed(IN eid int, OUT net_fees i
 BEGIN
 	WITH O AS (
 		SELECT *
-		FROM Offerings NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
+		FROM Offerings O NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
 		WHERE A.manager = _eid
 			AND extract(year FROM get_offering_end_date(O.offering_id)) = extract(year FROM now())
 	)
