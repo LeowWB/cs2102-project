@@ -1031,7 +1031,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE PROCEDURE add_course_package(_name text, _num_free_sessions int, _sale_start_date date, _sale_end_date date, _price int) AS $$
 BEGIN
 	INSERT INTO Course_packages(sale_start_date, sale_end_date, num_free_registrations, name, price)
-	VALUES(_sale_start_date, _sale_end_date, _num_free_registrations, _name, _price);
+	VALUES(_sale_start_date, _sale_end_date, _num_free_sessions, _name, _price);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1045,17 +1045,17 @@ DECLARE
 BEGIN
 	_curr_date := CURRENT_DATE;
 	RETURN QUERY
-	SELECT name, num_free_registrations, sale_end_date, price, package_id
-	FROM Course_packages
-	WHERE _curr_date > sale_start_date and _curr_date < sale_end_date;
+	SELECT P.name, P.num_free_registrations, P.sale_end_date, P.price, P.package_id
+	FROM Course_packages P
+	WHERE _curr_date > P.sale_start_date and _curr_date < P.sale_end_date;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION get_package_if_available_for_purchase(IN _package_id int, OUT name text, OUT num_free_registrations int, OUT sale_end_date date, OUT price int) 
 RETURNS record AS $$
-	SELECT name, num_free_sessions AS num_free_registrations, sale_end_date, price
-	FROM get_available_course_packages()
-	WHERE package_id = _package_id;
+	SELECT P.name, P.num_free_sessions AS num_free_registrations, P.sale_end_date, P.price
+	FROM get_available_course_packages() P
+	WHERE P.package_id = _package_id;
 $$ LANGUAGE sql;
 
 --13
@@ -1106,7 +1106,7 @@ BEGIN
 		-- All sessions have been redeemed
 		SELECT S.date INTO _most_recent_session_date
 		FROM Redeems R JOIN Sessions S ON R.sid = S.sid AND R.offering_id = S.offering_id
-		WHERE buys_date = r.date AND package_id = r.package_id AND number = r.number
+		WHERE R.buys_date = r.date AND package_id = r.package_id AND number = r.number
 		ORDER BY S.date desc;
 		-- Check if package is partially active (one session at least 7 days later)
 		_curr_date = CURRENT_DATE;
@@ -1128,8 +1128,8 @@ RETURNS TABLE(course_title text, course_area text, start_date date, end_date dat
 BEGIN
 	RETURN QUERY
 	SELECT * 
-	FROM get_unsorted_available_course_offerings()
-	ORDER BY reg_deadline, course_title;
+	FROM get_unsorted_available_course_offerings() O
+	ORDER BY O.reg_deadline, O.course_title;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1520,9 +1520,9 @@ CREATE OR REPLACE FUNCTION pay_salary()
 RETURNS TABLE(emp_id int, emp_name text, emp_status employee_status, num_work_days int, num_work_hours int, hourly_rate int, monthly_salary int, amount_paid int) AS $$
 DECLARE
 	_curs CURSOR FOR (
-		SELECT eid, name, salary_type, get_work_days(salary_type, join_date, depart_date) AS num_work_days, get_work_hours(eid, salary_type) AS num_work_hours, hourly_rate, monthly_salary, calculate_salary(eid, salary_type, join_date, depart_date, monthly_salary, hourly_rate) AS amount_paid INTO r
-		FROM Employees NATURAL LEFT JOIN Full_time_Emp NATURAL LEFT JOIN Part_time_Emp
-		ORDER BY eid
+		SELECT E.eid, E.name, E.salary_type, get_work_days(E.salary_type, E.join_date, E.depart_date) AS num_work_days, get_work_hours(E.eid, E.salary_type) AS num_work_hours, P.hourly_rate, F.monthly_salary, calculate_salary(E.eid, E.salary_type, E.join_date, E.depart_date, F.monthly_salary, P.hourly_rate) AS amount_paid INTO r
+		FROM Employees E NATURAL LEFT JOIN Full_time_Emp F NATURAL LEFT JOIN Part_time_Emp P
+		ORDER BY E.eid
 	);
 	r record;
 	_curr_date date;
@@ -1557,8 +1557,8 @@ RETURNS TABLE(cust_id int, cust_name text, course_area text, course_id int, cour
 BEGIN
 	RETURN QUERY
 	SELECT *
-	FROM get_unsorted_courses_to_promote()
-	ORDER BY cust_id, reg_deadline;
+	FROM get_unsorted_courses_to_promote() C
+	ORDER BY C.cust_id, C.reg_deadline;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1575,29 +1575,29 @@ BEGIN
 	SELECT extract(year FROM now()) INTO _curr_year;
 
 	RETURN QUERY
-	SELECT package_id, num_free_registrations, price, sale_start_date, sale_end_date, count(*) 
-	FROM Buys NATURAL JOIN Course_packages
-	WHERE date >= make_date(_curr_year, 1, 1)
-	GROUP BY package_id
-	ORDER BY count(*) desc, price desc
+	SELECT P.package_id, P.num_free_registrations, P.price, P.sale_start_date, P.sale_end_date, count(*) 
+	FROM Buys B NATURAL JOIN Course_packages P
+	WHERE B.date >= make_date(_curr_year, 1, 1)
+	GROUP BY P.package_id
+	ORDER BY count(*) desc, P.price desc
 	LIMIT _n;
 
 	-- to check for tied packages, get packages again but offset by N, 
 	--    check highest if tied, if yes, RETURN NEXT, LOOP till not tied 
 	_index := _n;
 	SELECT count(*) INTO _n_count
-	FROM Buys NATURAL JOIN Course_packages
-	WHERE date >= make_date(_curr_year, 1, 1)
-	GROUP BY package_id
-	ORDER BY count(*) desc, price desc
+	FROM Buys B NATURAL JOIN Course_packages P
+	WHERE B.date >= make_date(_curr_year, 1, 1)
+	GROUP BY P.package_id
+	ORDER BY count(*) desc, P.price desc
 	OFFSET _n - 1
 	LIMIT 1;
 	LOOP
-		SELECT package_id, num_free_registrations, price, sale_start_date, sale_end_date, count(*) AS count INTO _package
-		FROM Buys NATURAL JOIN Course_packages
-		WHERE date >= make_date(_curr_year, 1, 1)
-		GROUP BY package_id
-		ORDER BY count(*) desc, price desc
+		SELECT P.package_id, P.num_free_registrations, P.price, P.sale_start_date, P.sale_end_date, count(*) AS count INTO _package
+		FROM Buys B NATURAL JOIN Course_packages P
+		WHERE B.date >= make_date(_curr_year, 1, 1)
+		GROUP BY P.package_id
+		ORDER BY count(*) desc, P.price desc
 		OFFSET _index
 		LIMIT 1;
 
@@ -1631,8 +1631,8 @@ BEGIN
 	-- Popular courses offered this year
 	RETURN QUERY
 	SELECT * 
-	FROM get_popular_courses()
-	ORDER BY num_reg desc, course_id;
+	FROM get_popular_courses() C
+	ORDER BY C.num_reg desc, C.course_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1648,26 +1648,26 @@ BEGIN
 	FOR i in 1.._num_months LOOP
 		SELECT extract(month FROM _curr_date) INTO month;
 		SELECT extract(year FROM _curr_date) INTO year;
-		SELECT sum(amount) INTO total_salary_paid
-		FROM Pay_slips
-		WHERE extract(month FROM payment_date) = month
-			AND extract(year FROM payment_date) = year;
-		SELECT sum(price) INTO total_package_sales
-		FROM Buys NATURAL JOIN Course_packages
-		WHERE extract(month FROM date) = month
-			AND extract(year FROM date) = year;
-		SELECT sum(fees) INTO total_reg_fees
-		FROM Registers NATURAL JOIN Offerings
-		WHERE extract(month FROM date) = month
-			AND extract(year FROM date) = year;
-		SELECT sum(refund_amt) INTO total_refunded_fees
-		FROM Cancels
-		WHERE extract(month FROM date) = month
-			AND extract(year FROM date) = year;
+		SELECT sum(S.amount) INTO total_salary_paid
+		FROM Pay_slips S
+		WHERE extract(month FROM S.payment_date) = month
+			AND extract(year FROM S.payment_date) = year;
+		SELECT sum(P.price) INTO total_package_sales
+		FROM Buys B NATURAL JOIN Course_packages P
+		WHERE extract(month FROM B.date) = month
+			AND extract(year FROM B.date) = year;
+		SELECT sum(O.fees) INTO total_reg_fees
+		FROM Registers R NATURAL JOIN Offerings O
+		WHERE extract(month FROM R.date) = month
+			AND extract(year FROM R.date) = year;
+		SELECT sum(C.refund_amt) INTO total_refunded_fees
+		FROM Cancels C
+		WHERE extract(month FROM C.date) = month
+			AND extract(year FROM C.date) = year;
 		SELECT count(*) INTO total_redemptions
-		FROM Redeems
-		WHERE extract(month FROM date) = month
-			AND extract(year FROM date) = year;
+		FROM Redeems Re
+		WHERE extract(month FROM Re.date) = month
+			AND extract(year FROM Re.date) = year;
 		RETURN NEXT;
 		_curr_date := _curr_date - INTERVAL '1 month';
 	END LOOP;
@@ -1680,8 +1680,8 @@ CREATE OR REPLACE FUNCTION view_manager_report()
 RETURNS TABLE(manager_name text, total_num_areas int, total_offerings int, total_reg_fees int, highest_total_fees_offering text) AS $$
 DECLARE
 	_curs CURSOR FOR (
-		SELECT name, eid
-		FROM Managers NATURAL JOIN Employees
+		SELECT E.name, E.eid
+		FROM Managers NATURAL JOIN Employees E
 	);
 	_manager record;
 	_total_fees_record record;
