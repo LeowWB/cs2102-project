@@ -1075,7 +1075,7 @@ BEGIN
 	END IF;
 	_credit_card_r := get_latest_credit_card(_cust_id);
 	INSERT INTO Buys(date, package_id, number, num_remaining_redemptions)
-	VALUES(CURRENT_TIMESTAMP, _package_id, _credit_card_r.number, r._num_free_registrations);
+	VALUES(CURRENT_TIMESTAMP, _package_id, _credit_card_r.number, r.num_free_registrations);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1086,6 +1086,7 @@ RETURNS json AS $$
 DECLARE
 	_cc_num varchar(19);
 	r record;
+	_package record;
 	_session_info redeemed_session_info[];
 	_pkg_info course_package_info;
 	_most_recent_session_date date;
@@ -1098,10 +1099,13 @@ BEGIN
 	IF r IS NULL THEN
 		RAISE EXCEPTION 'Customer has not bought a package before.';
 	END IF;
+	SELECT * INTO _package
+	FROM Course_packages P
+	WHERE P.package_id = r.package_id;
 	IF r.num_remaining_redemptions >= 1 THEN
 		-- Active package
 		_session_info := get_redeemed_sessions(r.date, r.package_id, r.number);
-		_pkg_info := ROW(r.name , r.date, r.price, r.num_free_registrations, r.num_remaining_redemptions, _session_info);
+		_pkg_info := ROW(_package.name , r.date, _package.price, _package.num_free_registrations, r.num_remaining_redemptions, _session_info);
 		RETURN to_json(_pkg_info);
 	ELSE
 		-- All sessions have been redeemed
@@ -1114,7 +1118,7 @@ BEGIN
 		IF NOT _curr_date + 7 > _most_recent_session_date THEN
 			-- Partially active!
 			_session_info := get_redeemed_sessions(r.date, r.package_id, r.number);
-			_pkg_info := ROW(r.name , r.date, r.price, r.num_free_registrations, r.num_remaining_redemptions, _session_info);
+			_pkg_info := ROW(_package.name , r.date, _package.price, _package.num_free_registrations, r.num_remaining_redemptions, _session_info);
 			RETURN to_json(_pkg_info);
 		END IF;
 		-- No message or return if package is inactive
