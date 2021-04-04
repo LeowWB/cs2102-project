@@ -27,18 +27,15 @@ CALL add_course_package('Bundle Sale', 8, '2021-1-2', '2021-5-1', 17000);
 CALL add_course_package('Big Bundle', 15, '2021-1-3', '2021-12-1', 30000);
 CALL add_course_package('Mid-Year Sale', 5, '2021-6-1', '2021-7-1', 11000);
 
--- Replace with coherent data
 INSERT INTO Buys
-VALUES ('2002-09-14', 1, '344671399807892', 0),
-       ('1972-06-30', 2, '4024007179854135', 7),
-       ('1974-05-19', 3, '4485612061643194', 11),
-       ('1982-10-22', 4, '4532006442505973', 7),
-       ('1992-05-19', 5, '4916091768888534', 20),
-       ('1999-01-01', 6, '4916424671016132', 0),
-       ('1995-09-24', 7, '5180253314420403', 6),
-       ('2000-02-05', 8, '5279615931773372', 2),
-       ('1980-04-29', 9, '5426004743132991', 11),
-       ('1990-10-10', 10, '6011784365986811', 4);
+VALUES ('2021-01-14', 1, '344671399807892', 0),
+       ('2021-01-28', 1, '4024007179854135', 3),
+       ('2021-04-02', 2, '4485612061643194', 2),
+       ('2021-01-13', 3, '4532006442505973', 7),
+       ('2021-03-10', 3, '4916091768888534', 4),
+       ('2021-01-03', 3, '4916424671016132', 0),
+       ('2021-04-01', 4, '5180253314420403', 10),
+       ('2000-03-05', 4, '5279615931773372', 1);
 
 begin transaction; -- for employees
 -- Instructors >= 1 course area, Managers >= 0, Admin = 0
@@ -47,7 +44,7 @@ CALL add_employee('Madeline Parisian', '267 Kaylie Divide\nEstherstad, CA 46624-
 CALL add_employee('Sally Wolowitz', '320 Wall Street\nRhodes Island, RI 341390', '90807762', 'wollosally@hotmail.com', 'part_time', 1300, '2017-10-7', 'instructor', ARRAY[ 'networks' ]);
 CALL add_employee('Mr. Monserrate Kohler', '359 Jamir Square Apt. 048\nLake Zackery, NH 39502-1706', '96467215', 'blair.dach@example.org', 'full_time', 300000, '2003-04-30', 'instructor', ARRAY[ 'databases', 'math' ]);
 CALL add_employee('Dayna Schultz', '877 Arlene Coves Suite 434\nNew Wilson, MN 88696-8280', '97303635', 'katelin.dietrich@example.org', 'full_time', 250000, '2019-11-11', 'manager', ARRAY[ 'math' ]);
-CALL add_employee('Prof. Lorenz Walter V', '90722 Sienna Streets Suite 142\nWest Jerrod, DE 13419-1991', '95298596', 'fadel.hellen@example.org', 'full_time', 400000, ''2011-11-06'', 'manager', ARRAY[ 'databases', 'networks' ]);
+CALL add_employee('Prof. Lorenz Walter V', '90722 Sienna Streets Suite 142\nWest Jerrod, DE 13419-1991', '95298596', 'fadel.hellen@example.org', 'full_time', 400000, '2011-11-06', 'manager', ARRAY[ 'databases', 'networks' ]);
 CALL add_employee('Cletus Jerde', '775 Martina Station Apt. 190\nSouth Elody, IN 35993-2103', '97233481', 'haylie15@example.com', 'full_time', 225000, '2020-1-11', 'manager', ARRAY[ ]);
 CALL add_employee('Charlie Waltz', '23 Sentosa Cove Blk 10\nSingapore, S828696', '96215538', 'charlie.wz@google.com', 'full_time', 290000, '2016-3-21', 'administrator', ARRAY[ ]);
 CALL add_employee('Andy Lou', '108 Serenity Walk\nNew York, NY, 38696-7921', '91031294', 'andlou80@yahoo.com', 'full_time', 310000, '2012-1-10', 'administrator', ARRAY[ ]);
@@ -61,7 +58,6 @@ CALL add_course('CS2105', 'Computer Networks', 'networks', 1);
 
 BEGIN TRANSACTION; -- for offerings
 -- Try to get offerings that have past, ongoing, and available soon
-add_course_offering(_offering_id int, _course_id int, _course_fees int, _target_reg int, _launch_date date, _reg_deadline date, _admin_id int, _sessions session_info[]
 CALL add_course_offering(1, 1, 30000, 1000, '2021-1-1', '2020-4-1', 7, ARRAY[ (date'2021-1-4', 9, 1)::session_info, (date'2021-1-4', 2, 2)::session_info ]);
 CALL add_course_offering(2, 1, 30000, 800, '2021-4-1', '2020-6-1', 7, ARRAY[ (date'2021-4-5', 3, 1)::session_info, (date'2021-4-5', 2, 1)::session_info ]);
 CALL add_course_offering(3, 2, 25000, 700, '2021-2-1', '2020-6-1', 7, ARRAY[ (date'2021-3-2', 10, 3)::session_info, (date'2021-3-3', 10, 3)::session_info ]);
