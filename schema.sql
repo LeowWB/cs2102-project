@@ -5,7 +5,7 @@ create table Customers
     cust_id serial primary key,
     address text,
     phone   varchar(20),
-    name    text,
+    name    text not null,
     email   text
 );
 
@@ -14,10 +14,10 @@ drop table if exists Credit_cards cascade;
 create table Credit_cards
 (
     number      varchar(19) primary key,
-    cvv         varchar(4),
-    cust_id     integer,
-    from_date   timestamp,
-    expiry_date date,
+    cvv         varchar(4) not null,
+    cust_id     integer not null,
+    from_date   timestamp not null,
+    expiry_date date not null,
     check (expiry_date > from_date),
     foreign key (cust_id) references Customers (cust_id)
 );
@@ -26,20 +26,20 @@ drop table if exists Rooms cascade;
 create table Rooms
 (
     rid              serial primary key,
-    location         text,
-    seating_capacity integer
+    location         text not null,
+    seating_capacity integer not null
 );
 
 drop table if exists Course_packages cascade;
 create table Course_packages
 (
     package_id             serial primary key,
-    sale_start_date        date,
-    sale_end_date          date,
-    num_free_registrations integer
+    sale_start_date        date not null,
+    sale_end_date          date not null,
+    num_free_registrations integer not null
         check (num_free_registrations > 0),
-    name                   text,
-    price                  integer
+    name                   text not null,
+    price                  integer not null
         check (price > 0),
 
     check (sale_start_date < sale_end_date)
@@ -49,10 +49,10 @@ create table Course_packages
 drop table if exists Buys cascade;
 create table Buys
 (
-    date                      timestamp,
+    date                      timestamp not null,
     package_id                integer references Course_packages (package_id),
     number                    varchar(19) references Credit_cards (number),
-    num_remaining_redemptions integer,
+    num_remaining_redemptions integer not null,
     primary key (date, package_id, number)
 );
 
@@ -71,12 +71,12 @@ create table Employees
         check ( salary_type in ('full_time', 'part_time') ),
     job_type    varchar(20) not null
         check (job_type in ('administrator', 'manager', 'full_time_instructor', 'part_time_instructor')),
-    name        text,
+    name        text not null,
     phone       varchar(20),
     address     text,
     email       text,
     depart_date date,
-    join_date   date,
+    join_date   date not null,
     check (join_date < depart_date),
     unique (eid, job_type),
     unique (eid, salary_type)
@@ -86,7 +86,7 @@ drop table if exists Part_time_Emp cascade;
 create table Part_time_Emp
 (
     eid         integer primary key,
-    hourly_rate int,
+    hourly_rate int not null,
     salary_type char(9) not null default 'part_time'
         check ( salary_type = 'part_time' ),
     foreign key (eid, salary_type) references Employees (eid, salary_type) on delete cascade
@@ -96,7 +96,7 @@ drop table if exists Full_time_Emp cascade;
 create table Full_time_Emp
 (
     eid            integer primary key,
-    monthly_salary int,
+    monthly_salary int not null,
     salary_type    char(9) not null default 'full_time'
         check ( salary_type = 'full_time' ),
     foreign key (eid, salary_type) references Employees (eid, salary_type) on delete cascade
@@ -163,7 +163,7 @@ drop table if exists Specializes cascade;
 create table Specializes
 (
     eid  integer references Instructors (eid),
-    name text references Course_areas (name),
+    name text not null references Course_areas (name),
     primary key (eid, name)
 );
 
@@ -171,23 +171,23 @@ drop table if exists Courses cascade;
 create table Courses
 (
     course_id   serial primary key,
-    title       text unique,
-    description text,
-    duration    integer,
-    area        text references Course_areas (name)
+    title       text not null unique,
+    description text not null,
+    duration    integer not null,
+    area        text not null references Course_areas (name)
 );
 
 drop table if exists Offerings cascade;
 create table Offerings
 (
-	offering_id					integer primary key,
-    course_id                   integer references Courses (course_id),
-    launch_date                 date,
-    fees                        integer
+    offering_id	                integer primary key,
+    course_id                   integer not null references Courses (course_id),
+    launch_date                 date not null,
+    fees                        integer not null
         check ( fees >= 0 ),
-    target_number_registrations integer
+    target_number_registrations integer not null
         check ( target_number_registrations >= 0 ),
-    registration_deadline       date,
+    registration_deadline       date not null,
     handler                     integer references Administrators (eid) not null,
     -- seating capacity is derived from sessions
     -- check target_n_r < seating capacity
@@ -206,8 +206,8 @@ create table Sessions
     offering_id integer references Offerings (offering_id) not null,
     -- seating capacity is derived from room
     instructor  integer references Instructors (eid) not null,
-    date        date,
-    start_time  integer
+    date        date not null,
+    start_time  integer not null
         check ((start_time >= 9 and start_time < 12) or (start_time >= 14 and start_time < 18)),
     room        integer references Rooms (rid) not null,
     unique (offering_id, date, start_time),
@@ -261,9 +261,9 @@ drop table if exists Pay_slips cascade;
 create table Pay_slips
 (
     payment_date   date,
-    amount         integer, --store in cents
-    num_work_hours integer,
-    num_work_days  integer,
+    amount         integer not null, --store in cents
+    num_work_hours integer not null,
+    num_work_days  integer not null,
     eid            integer,
     primary key (payment_date, eid),
     foreign key (eid) references Employees (eid),
