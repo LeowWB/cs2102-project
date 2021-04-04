@@ -328,17 +328,17 @@ $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION offering_reg_deadline_passed(_offering_id int, _date date) 
 RETURNS boolean AS $$
-	SELECT registration_deadline > _date
-	FROM Offerings
-	WHERE offering_id = _offering_id;
+	SELECT O.registration_deadline > _date
+	FROM Offerings O
+	WHERE O.offering_id = _offering_id;
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_most_recent_package(IN _cc_num varchar(19), OUT date timestamp, OUT package_id int, OUT num_remaining_redemptions int, OUT name text, OUT price int, OUT num_free_registrations int) 
 RETURNS record AS $$
 	SELECT B.date, B.package_id, B.num_remaining_redemptions, P.name, P.price, P.num_free_registrations
 	FROM Buys B JOIN Course_packages P ON B.package_id = P.package_id 
-	WHERE number = _cc_num
-	ORDER BY date desc
+	WHERE B.number = _cc_num
+	ORDER BY B.date desc
 	LIMIT 1;
 $$ LANGUAGE sql;
 
@@ -348,9 +348,9 @@ DECLARE
 	_curs CURSOR FOR (
 		SELECT S.offering_id, S.date, S.start_time
 		FROM Redeems R JOIN Sessions S ON R.sid = S.sid AND R.offering_id = S.offering_id
-		WHERE buys_date = _date 
-			AND package_id = _pkg_id 
-			AND number = _cc_num
+		WHERE R.buys_date = _date 
+			AND R.package_id = _pkg_id 
+			AND R.number = _cc_num
 		ORDER BY S.date, S.start_time
 	);
 	r record;
@@ -363,7 +363,7 @@ BEGIN
 		FETCH _curs INTO r;
 		EXIT WHEN NOT FOUND;
 		IF _first_access THEN
-			SELECT title INTO _course_name
+			SELECT C.title INTO _course_name
 			FROM Offerings O JOIN Courses C ON O.course_id = C.course_id
 			WHERE O.offering_id = r.offering_id;
 			_first_access := false;
@@ -381,9 +381,9 @@ CREATE OR REPLACE FUNCTION get_unsorted_available_course_offerings()
 RETURNS TABLE(course_title text, course_area text, start_date date, end_date date, reg_deadline date, course_fees int, num_rem_seats int) AS $$
 DECLARE
 	_curs CURSOR FOR (
-		SELECT offering_id, course_id, registration_deadline, fees
-		FROM Offerings
-		WHERE _curr_date <= registration_deadline
+		SELECT O.offering_id, O.course_id, O.registration_deadline, O.fees
+		FROM Offerings O
+		WHERE _curr_date <= O.registration_deadline
 	);
 	r record;
 	_curr_date date;
@@ -393,17 +393,17 @@ BEGIN
 	LOOP
 		FETCH _curs INTO r;
 		EXIT WHEN NOT FOUND;
-		SELECT title, area INTO course_title, course_area
-		FROM Courses
-		WHERE course_id = r.course_id;
-		SELECT min(date), max(date) INTO start_date, end_date
-		FROM Sessions
-		WHERE offering_id = r.offering_id;
+		SELECT C.title, C.area INTO course_title, course_area
+		FROM Courses C
+		WHERE C.course_id = r.course_id;
+		SELECT min(S.date), max(S.date) INTO start_date, end_date
+		FROM Sessions S
+		WHERE S.offering_id = r.offering_id;
 		reg_deadline := r.registration_deadline;
 		course_fees := r.fees;
-		SELECT sum(get_session_num_registrations(r.offering_id, sid)) INTO num_rem_seats 
-		FROM Sessions
-		WHERE offering_id = r.offering_id;
+		SELECT sum(get_session_num_registrations(r.offering_id, S.sid)) INTO num_rem_seats 
+		FROM Sessions S
+		WHERE S.offering_id = r.offering_id;
 		RETURN NEXT;
 	END LOOP;
 	CLOSE _curs;
@@ -443,11 +443,11 @@ BEGIN
 		RETURN NULL;
 	END IF;
 
-	SELECT sum(duration) INTO _hours
-	FROM CourseOfferingSessions
-	WHERE instructor = _eid
-		AND extract(month from now()) = extract(month from date)
-	GROUP BY instructor;
+	SELECT sum(T.duration) INTO _hours
+	FROM CourseOfferingSessions T
+	WHERE T.instructor = _eid
+		AND extract(month from now()) = extract(month from T.date)
+	GROUP BY T.instructor;
 	
 	RETURN _hours;
 END;
@@ -479,11 +479,11 @@ BEGIN
 
 	-- Customers who did not register/redeem for an offering in last 6 months
 	RETURN QUERY
-	SELECT cust_id
+	SELECT C.cust_id
 	FROM Customers C NATURAL JOIN Credit_cards Cc JOIN Registers Rg ON Cc.number = Rg.number
 	WHERE Rg.date >= make_date(_curr_year, _curr_month, 1) - INTERVAL '6 months'
 	UNION
-	SELECT cust_id
+	SELECT C.cust_id
 	FROM Customers C NATURAL JOIN Credit_cards Cc JOIN Redeems Rd ON Cc.number = Rd.number
 	WHERE Rd.date >= make_date(_curr_year, _curr_month, 1) - INTERVAL '6 months';
 END;
@@ -494,13 +494,13 @@ RETURNS TABLE(offering_id int, date date) AS $$
 BEGIN
 	-- Customers who did not register/redeem for an offering in last 6 months
 	RETURN QUERY
-	SELECT offering_id, date
-	FROM Registers
-	WHERE number = _cc_num
+	SELECT Reg.offering_id, Reg.date
+	FROM Registers Reg
+	WHERE Reg.number = _cc_num
 	UNION
-	SELECT offering_id, date
-	FROM Redeems
-	WHERE number = _cc_num;
+	SELECT Red.offering_id, Red.date
+	FROM Redeems Red
+	WHERE Red.number = _cc_num;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -508,13 +508,13 @@ CREATE OR REPLACE FUNCTION get_interested_course_areas(_cust_id int)
 RETURNS TABLE(area text) AS $$
 BEGIN
 	RETURN QUERY
-	SELECT area
+	SELECT C.area
 	FROM (
-		SELECT offering_id
-		FROM get_registered_and_redeemed_offerings(get_latest_credit_card(_cust_id))
-		ORDER BY date desc
+		SELECT O.offering_id
+		FROM get_registered_and_redeemed_offerings(get_latest_credit_card(_cust_id)) O
+		ORDER BY O.date desc
 		LIMIT 3
-	) as OfferingID NATURAL JOIN Offerings NATURAL JOIN Courses;
+	) as OfferingID NATURAL JOIN Offerings NATURAL JOIN Courses C;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -534,19 +534,19 @@ BEGIN
 		FETCH _cust_curs INTO r;
 		EXIT WHEN NOT FOUND;
 		-- get_interested_course_areas(cust_id) (areas in last 3 offerings cust had)
-		SELECT count(area) INTO _num_registered_offerings
-		FROM get_interested_course_areas(r.cust_id);
+		SELECT count(A.area) INTO _num_registered_offerings
+		FROM get_interested_course_areas(r.cust_id) A;
 		IF _num_registered_offerings = 0 THEN
 			-- Assume all course areas are interesting
 			RETURN QUERY
-			SELECT r.cust_id, r.name, C.area, C.course_id, C.title, launch_date, registration_deadline, fees
-			FROM Course_areas A JOIN Courses C ON A.name = C.area NATURAL JOIN Offerings
-			WHERE registration_deadline > CURRENT_DATE;
+			SELECT r.cust_id, r.name, C.area, C.course_id, C.title, O.launch_date, O.registration_deadline, O.fees
+			FROM Course_areas A JOIN Courses C ON A.name = C.area NATURAL JOIN Offerings O
+			WHERE O.registration_deadline > CURRENT_DATE;
 		ELSE
 			-- Assume only those areas are interesting
 			RETURN QUERY
-			SELECT r.cust_id, r.name, C.area, C.course_id, C.title, launch_date, registration_deadline, fees
-			FROM get_interested_course_areas(r.cust_id) A JOIN Courses C ON A.name = C.area NATURAL JOIN Offerings
+			SELECT r.cust_id, r.name, C.area, C.course_id, C.title, O.launch_date, O.registration_deadline, O.fees
+			FROM get_interested_course_areas(r.cust_id) A JOIN Courses C ON A.name = C.area NATURAL JOIN Offerings O
 			WHERE registration_deadline > CURRENT_DATE;
 		END IF;
 	END LOOP;
@@ -556,12 +556,12 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION get_num_reg_offerings(_offering_id int) 
 RETURNS int AS $$
-	SELECT sum(num_reg)::INTEGER
+	SELECT sum(Registrations.num_reg)::INTEGER
 	FROM (
-		SELECT get_session_num_registrations(offering_id, sid) AS num_reg, offering_id
-		FROM Offerings NATURAL JOIN Sessions
-		WHERE offering_id = _offering_id ) as Registrations
-	GROUP BY offering_id;
+		SELECT get_session_num_registrations(O.offering_id, S.sid) AS num_reg, O.offering_id
+		FROM Offerings O NATURAL JOIN Sessions S
+		WHERE O.offering_id = _offering_id ) as Registrations
+	GROUP BY O.offering_id;
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION num_reg_latest_offering(_course_id int) 
@@ -569,13 +569,13 @@ RETURNS int AS $$
 	WITH CO AS (
 		SELECT * 
 		FROM Courses NATURAL JOIN Offerings
-		WHERE course_id = _course_id
+		WHERE C.course_id = _course_id
 	)
-	SELECT get_num_reg_offerings(offering_id)
+	SELECT get_num_reg_offerings(CO.offering_id)
 	FROM CO
-	WHERE launch_date >= ALL (
-		SELECT launch_date
-		FROM CO
+	WHERE CO.launch_date >= ALL (
+		SELECT CO2.launch_date
+		FROM CO CO2
 	);
 $$ LANGUAGE sql;
 
@@ -585,15 +585,15 @@ BEGIN
 	RETURN QUERY
 	-- Courses with >= 2 offerings this year
 	WITH C AS (
-		SELECT course_id, title, area
-		FROM Courses NATURAL JOIN Offerings
-		WHERE extract(year FROM launch_date) = extract(year FROM now())
-		GROUP BY course_id
+		SELECT Co.course_id, Co.title, Co.area
+		FROM Courses Co NATURAL JOIN Offerings O
+		WHERE extract(year FROM O.launch_date) = extract(year FROM now())
+		GROUP BY Co.course_id
 		HAVING count(*) >= 2 )
 	-- Courses whose later offerings have higher reg than earlier ones
-	SELECT course_id, course_title, course_area, count(*) AS num_offerings, num_reg_latest_offering(course_id) AS num_reg
+	SELECT course_id, course_title, course_area, count(*) AS num_offerings, num_reg_latest_offering(C2.course_id) AS num_reg
 	FROM (
-		SELECT course_id, course_title, course_area
+		SELECT C.course_id, C.title AS course_title, C.area AS course_area
 		FROM C
 		WHERE NOT EXISTS (
 			SELECT 1
@@ -602,9 +602,9 @@ BEGIN
 				AND C.course_id = O1.course_id
 				AND C.course_id = O2.course_id
 				AND get_num_reg_offerings(O1.offering_id) <= get_num_reg_offerings(O2.offering_id) )
-		) as C2 NATURAL JOIN Offerings
-	WHERE extract(year FROM launch_date) = extract(year FROM now())
-	GROUP BY course_id;
+		) as C2 NATURAL JOIN Offerings O
+	WHERE extract(year FROM O.launch_date) = extract(year FROM now())
+	GROUP BY C2.course_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -618,19 +618,19 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION get_offering_end_date(_offering_id int) RETURNS date as $$
 	SELECT S.date
 	FROM Offerings O NATURAL JOIN Sessions S
-	WHERE offering_id = _offering_id
+	WHERE O.offering_id = _offering_id
 		AND date >= ALL (
-			select date
+			select S.date
 			FROM Sessions
-			WHERE offering_id = _offering_id
+			WHERE S.offering_id = _offering_id
 		);
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_num_course_offerings(_eid int) RETURNS int as $$
 	SELECT count(*)::INTEGER AS count
 	FROM Offerings NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
-	WHERE manager = _eid
-		AND extract(year FROM get_offering_end_date(offering_id)) = extract(year FROM now());
+	WHERE A.manager = _eid
+		AND extract(year FROM get_offering_end_date(O.offering_id)) = extract(year FROM now());
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_total_reg_fees_managed(IN eid int, OUT net_fees int, OUT title text) RETURNS record as $$
@@ -638,8 +638,8 @@ BEGIN
 	WITH O AS (
 		SELECT *
 		FROM Offerings NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
-		WHERE manager = _eid
-			AND extract(year FROM get_offering_end_date(offering_id)) = extract(year FROM now())
+		WHERE A.manager = _eid
+			AND extract(year FROM get_offering_end_date(O.offering_id)) = extract(year FROM now())
 	)
 	SELECT sum(reg_fees) - sum(refund_fees) + sum(redeem_fees) AS net_fees, title
 	FROM (
@@ -647,13 +647,13 @@ BEGIN
 			SELECT count(*)
 			FROM O NATURAL JOIN Registers
 		) AS reg_fees, (
-			SELECT sum(refund_amt)
+			SELECT sum(Cancels.refund_amt)
 			FROM O NATURAL JOIN Cancels
 		) AS refund_fees, (
 			-- Round down to nearest dollar by dividing by 100 first then * 100 after truncated division
-			SELECT sum(((price / 100) / num_free_registrations) * 100)
-			FROM O NATURAL JOIN Redeems NATURAL JOIN Course_packages
-		) AS redeem_fees, title
+			SELECT sum(((P.price / 100) / P.num_free_registrations) * 100)
+			FROM O NATURAL JOIN Redeems NATURAL JOIN Course_packages P
+		) AS redeem_fees, O.title
 		FROM O
 	) as Fees;
 END;
