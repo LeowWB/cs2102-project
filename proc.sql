@@ -377,7 +377,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- TODO: Improve efficiency, get without using cursor?
-CREATE OR REPLACE FUNCTION get_unsorted_available_course_offerings() 
+CREATE OR REPLACE FUNCTION get_unsorted_available_course_offerings(_curr_date date) 
 RETURNS TABLE(course_title text, course_area text, start_date date, end_date date, reg_deadline date, course_fees int, num_rem_seats int) AS $$
 DECLARE
 	_curs CURSOR FOR (
@@ -386,9 +386,7 @@ DECLARE
 		WHERE _curr_date <= O.registration_deadline
 	);
 	r record;
-	_curr_date date;
 BEGIN
-	_curr_date := CURRENT_DATE;
 	OPEN _curs;
 	LOOP
 		FETCH _curs INTO r;
@@ -415,22 +413,26 @@ CREATE OR REPLACE FUNCTION get_work_days(_salary_type char(9), _join_date date, 
 DECLARE
 	_num_days_in_month int;
 	_curr_month int;
+	_curr_year int;
 	_join_month int;
+	_join_year int;
 	_first_work_day int;
 BEGIN
 	-- Work days are not applicable to part-time employees
-	IF salary_type = "part_time" THEN
+	IF _salary_type = 'part_time' THEN
 		RETURN NULL;
 	END IF;
 	SELECT extract(days FROM date_trunc('month', now()) + INTERVAL '1 month - 1 day') INTO _num_days_in_month;
 	SELECT extract(month FROM now()) INTO _curr_month;
+	SELECT extract(year FROM now()) INTO _curr_year;
 	SELECT extract(month FROM _join_date) INTO _join_month;
-	IF _join_month = _curr_month THEN
-		_first_work_day = _join_date;
+	SELECT extract(year FROM _join_date) INTO _join_year;
+	IF _join_month = _curr_month AND _join_year = _curr_year THEN
+		SELECT extract(days FROM _join_date) INTO _first_work_day;
 	ELSE 
 		_first_work_day = 1;
 	END IF;
-	RETURN COALESCE(_depart_date, _num_days_in_month) - _first_work_day + 1;
+	RETURN COALESCE(extract(days FROM _depart_date), _num_days_in_month) - _first_work_day + 1;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -439,7 +441,7 @@ DECLARE
 	_hours bigint;
 BEGIN
 	-- Work hours are not applicable to full-time employees 
-	IF _salary_type = "full_time" THEN
+	IF _salary_type = 'full_time' THEN
 		RETURN NULL;
 	END IF;
 
@@ -456,13 +458,19 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION calculate_salary(_eid int, _salary_type char(9), _join_date date, _depart_date date, _monthly_salary int, _hourly_rate int) RETURNS int AS $$
 DECLARE
 	_num_work_quantity int;
+	_num_days_in_month int;
 BEGIN
-	IF salary_type = "full_time" THEN
+	IF _salary_type = 'full_time' THEN
+		SELECT extract(days FROM date_trunc('month', now()) + INTERVAL '1 month - 1 day') INTO _num_days_in_month;
 		_num_work_quantity := get_work_days(_salary_type, _join_date, _depart_date);
-		RETURN (monthly_salary * _num_work_quantity) / _num_days_in_month;
+		RETURN (_monthly_salary * _num_work_quantity) / _num_days_in_month;
 	ELSE
 		-- salary_type is either "full_time" or "part_time"
 		_num_work_quantity := get_work_hours(_eid, _salary_type);
+		-- Part-time instructor did not teach any sessions this month
+		IF _num_work_quantity IS NULL THEN
+			RETURN 0;
+		END IF;
 		RETURN _hourly_rate * _num_work_quantity;
 	END IF;
 END;
@@ -481,11 +489,11 @@ BEGIN
 	RETURN QUERY
 	SELECT C.cust_id
 	FROM Customers C NATURAL JOIN Credit_cards Cc JOIN Registers Rg ON Cc.number = Rg.number
-	WHERE Rg.date >= make_date(_curr_year, _curr_month, 1) - INTERVAL '6 months'
+	WHERE Rg.date >= CURRENT_DATE - INTERVAL '6 months'
 	UNION
 	SELECT C.cust_id
 	FROM Customers C NATURAL JOIN Credit_cards Cc JOIN Redeems Rd ON Cc.number = Rd.number
-	WHERE Rd.date >= make_date(_curr_year, _curr_month, 1) - INTERVAL '6 months';
+	WHERE Rd.date >= CURRENT_DATE - INTERVAL '6 months';
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1109,8 +1117,8 @@ BEGIN
 	ELSE
 		-- All sessions have been redeemed
 		SELECT S.date INTO _most_recent_session_date
-		FROM Redeems R JOIN Sessions S ON R.sid = S.sid AND R.offering_id = S.offering_id
-		WHERE R.buys_date = r.date AND package_id = r.package_id AND number = r.number
+		FROM Redeems Re JOIN Sessions S ON Re.sid = S.sid AND Re.offering_id = S.offering_id
+		WHERE Re.buys_date = r.date AND package_id = r.package_id AND number = r.number
 		ORDER BY S.date desc;
 		-- Check if package is partially active (one session at least 7 days later)
 		_curr_date = CURRENT_DATE;
@@ -1120,7 +1128,8 @@ BEGIN
 			_pkg_info := ROW(_package.name , r.date, _package.price, _package.num_free_registrations, r.num_remaining_redemptions, _session_info);
 			RETURN to_json(_pkg_info);
 		END IF;
-		-- No message or return if package is inactive
+		-- Package is inactive
+		RAISE EXCEPTION 'Customer has an inactive package!';
 	END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -1129,10 +1138,13 @@ $$ LANGUAGE plpgsql;
 /* This routine is used to retrieve all the available course offerings that could be registered. The routine returns a table of records with the following information for each course offering: course title, course area, start date, end date, registration deadline, course fees, and the number of remaining seats. The output is sorted in ascending order of registration deadline and course title. */
 CREATE OR REPLACE FUNCTION get_available_course_offerings() 
 RETURNS TABLE(course_title text, course_area text, start_date date, end_date date, reg_deadline date, course_fees int, num_rem_seats int) AS $$
+DECLARE
+	_curr_date date;
 BEGIN
+	SELECT CURRENT_DATE INTO _curr_date;
 	RETURN QUERY
 	SELECT * 
-	FROM get_unsorted_available_course_offerings() O
+	FROM get_unsorted_available_course_offerings(_curr_date) O
 	ORDER BY O.reg_deadline, O.course_title;
 END;
 $$ LANGUAGE plpgsql;
@@ -1537,12 +1549,12 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION pay_salary() 
 RETURNS TABLE(emp_id int, emp_name text, emp_status employee_status, num_work_days int, num_work_hours int, hourly_rate int, monthly_salary int, amount_paid int) AS $$
 DECLARE
+	r record;
 	_curs CURSOR FOR (
-		SELECT E.eid, E.name, E.salary_type, get_work_days(E.salary_type, E.join_date, E.depart_date) AS num_work_days, get_work_hours(E.eid, E.salary_type) AS num_work_hours, P.hourly_rate, F.monthly_salary, calculate_salary(E.eid, E.salary_type, E.join_date, E.depart_date, F.monthly_salary, P.hourly_rate) AS amount_paid INTO r
+		SELECT E.eid, E.name, E.salary_type, get_work_days(E.salary_type, E.join_date, E.depart_date) AS num_work_days, get_work_hours(E.eid, E.salary_type) AS num_work_hours, P.hourly_rate, F.monthly_salary, calculate_salary(E.eid, E.salary_type, E.join_date, E.depart_date, F.monthly_salary, P.hourly_rate) AS amount_paid
 		FROM Employees E NATURAL LEFT JOIN Full_time_Emp F NATURAL LEFT JOIN Part_time_Emp P
 		ORDER BY E.eid
 	);
-	r record;
 	_curr_date date;
 BEGIN
 	SELECT CURRENT_DATE INTO _curr_date;
@@ -1552,7 +1564,7 @@ BEGIN
 		EXIT WHEN NOT FOUND;
 
 		INSERT INTO Pay_slips(payment_date, amount, num_work_hours, num_work_days, eid)
-		VALUES(_curr_date, r.amount_paid, r.num_work_hours, r.num_work_days, r.eid);	
+		VALUES(_curr_date, r.amount_paid, COALESCE(r.num_work_hours, 0), COALESCE(r.num_work_days, 0), r.eid);	
 
 		emp_id := r.eid;
 		emp_name := r.name;
