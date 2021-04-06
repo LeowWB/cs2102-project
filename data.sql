@@ -88,7 +88,6 @@ CALL add_course_offering(10, 10, 10000, 600, '2021-4-1', '2021-6-1', 7, ARRAY[ (
 
 COMMIT; -- for offerings
 
--- Still need to insert into Registers, Redeems, Cancels, Pay_slips tables
 CALL register_session(1, 2, 1, 'credit_card');
 CALL register_session(2, 3, 1, 'credit_card');
 CALL register_session(3, 3, 1, 'credit_card');
@@ -129,3 +128,23 @@ CALL register_session(9, 10, 1, 'course_package');
 CALL register_session(9, 2, 1, 'course_package');
 CALL register_session(10, 2, 1, 'course_package');
 CALL register_session(10, 3, 1, 'course_package');
+
+INSERT INTO Pay_slips
+VALUES ('2021-02-28', 250000, 0, 28, 1),
+       ('2021-02-28', 400000, 0, 28, 2),
+       ('2021-02-28', 225000, 0, 28, 3),
+       ('2021-02-28', 108000, 90, 0, 4),
+       ('2021-02-28', 136500, 105, 0, 5),
+       ('2021-02-28', 290000, 0, 28, 6),
+       ('2021-02-28', 310000, 0, 28, 7),
+       ('2021-02-28', 500000, 0, 28, 9),
+       ('2021-02-28', 600000, 0, 28, 10),
+       ('2021-03-31', 250000, 0, 31, 1),
+       ('2021-03-31', 400000, 0, 31, 2),
+       ('2021-03-31', 225000, 0, 31, 3),
+       ('2021-03-31', 132000, 110, 0, 4),
+       ('2021-03-31', 156000, 120, 0, 5),
+       ('2021-03-31', 290000, 0, 31, 6),
+       ('2021-03-31', 310000, 0, 31, 7),
+       ('2021-03-31', 500000, 0, 31, 9),
+       ('2021-03-31', 600000, 0, 31, 10);
