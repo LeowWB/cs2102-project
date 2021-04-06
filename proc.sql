@@ -813,7 +813,8 @@ DECLARE
 		JOIN Employees E ON I.eid = E.eid
 		JOIN Specializes SP ON I.eid = SP.eid 
 		JOIN Courses C ON SP.name = C.area
-		WHERE C.course_id = _course_id
+		WHERE E.depart_date IS NULL
+			AND C.course_id = _course_id
 	);
 	_course_duration int;
 	_emp record;
@@ -860,7 +861,8 @@ DECLARE
 		JOIN Employees E ON I.eid = E.eid
 		JOIN Specializes SP ON I.eid = SP.eid 
 		JOIN Courses C ON SP.name = C.area
-		WHERE C.course_id = _course_id
+		WHERE E.depart_date IS NULL 
+			AND C.course_id = _course_id
 		ORDER BY eid
 	);
 	_course_duration int;
@@ -1391,7 +1393,7 @@ BEGIN
 	END IF;
 	
 	SELECT * INTO _new_instructor
-	FROM Instructors
+	FROM Employees
 	WHERE eid = _new_instructor_id;
 	
 	SELECT date, start_time, duration, area INTO _session_date, _session_start, _course_duration, _course_area
@@ -1399,6 +1401,9 @@ BEGIN
 	WHERE offering_id = _offering_id
 		AND sid = _session_id;
 		
+	IF (_new_instructor.depart_date IS NOT NULL) THEN
+		RAISE EXCEPTION 'Specified instructor has already departed.';
+	END IF;
 	IF (SELECT NOT EXISTS(
 		SELECT 1
 		FROM Specializes
@@ -1501,6 +1506,8 @@ $$ LANGUAGE plpgsql;
 --24
 /* This routine is used to add a new session to a course offering. The inputs to the routine include the following: course offering identifier, new session number, new session day, new session start hour, instructor identifier for new session, and room identifier for new session. If the course offering’s registration deadline has not passed and the the addition request is valid, the routine will process the request with the necessary updates. */
 CREATE OR REPLACE PROCEDURE add_session(_offering_id int, _session_id int, _date date, _start_time int, _instructor_id int, _room_id int) AS $$
+DECLARE
+	_instructor record;
 BEGIN
 	IF (NOT does_offering_exist(_offering_id)) THEN
 		RAISE EXCEPTION 'Specified offering does not exist.';
@@ -1514,6 +1521,15 @@ BEGIN
 	IF offering_reg_deadline_passed(_offering_id, _date) THEN
 		RAISE EXCEPTION 'Course offering registration deadline has passed, unable to add session.';
 	END IF;
+	
+	SELECT * INTO _instructor
+	FROM Employees
+	WHERE eid = _instructor_id;
+	
+	IF (_instructor.depart_date IS NOT NULL) THEN
+		RAISE EXCEPTION 'Specified instructor has already departed.';
+	END IF;
+	
 	INSERT INTO Sessions(sid, offering_id, instructor, date, start_time, room)
 	VALUES(_session_id, _offering_id, _instructor_id, _date, _start_time, _room_id);
 END;
