@@ -1003,9 +1003,6 @@ BEGIN
 	IF cardinality(_sessions) <= 0 THEN
 		RAISE EXCEPTION 'A course offering must have at least 1 session!';
 	END IF;
-	IF _reg_deadline + 10 > _launch_date THEN
-		RAISE EXCEPTION 'Offering registration deadline must be at least 10 days before offering start date!';
-	END IF;
 	_session_num := 1;
 	-- Insert into Offerings first so foreign key exists for Sessions
 	INSERT INTO Offerings(offering_id, course_id, launch_date, fees, target_number_registrations, registration_deadline, handler)
