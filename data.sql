@@ -89,3 +89,43 @@ CALL add_course_offering(10, 10, 10000, 600, '2021-4-1', '2021-6-1', 7, ARRAY[ (
 COMMIT; -- for offerings
 
 -- Still need to insert into Registers, Redeems, Cancels, Pay_slips tables
+CALL register_session(1, 2, 1, 'credit_card');
+CALL register_session(2, 3, 1, 'credit_card');
+CALL register_session(3, 3, 1, 'credit_card');
+CALL register_session(4, 5, 1, 'credit_card');
+CALL register_session(6, 6, 1, 'credit_card');
+CALL register_session(5, 7, 1, 'course_package');
+CALL register_session(7, 8, 1, 'course_package');
+CALL register_session(8, 9, 1, 'course_package');
+CALL register_session(9, 10, 1, 'course_package');
+CALL register_session(10, 2, 1, 'course_package');
+CALL cancel_registration(1, 2);
+CALL cancel_registration(2, 3);
+CALL cancel_registration(3, 3);
+CALL cancel_registration(4, 5);
+CALL cancel_registration(6, 6);
+CALL cancel_registration(5, 7);
+CALL cancel_registration(7, 8);
+CALL cancel_registration(8, 9);
+CALL cancel_registration(9, 10);
+CALL cancel_registration(10, 2);
+CALL register_session(1, 2, 1, 'credit_card');
+CALL register_session(1, 3, 1, 'credit_card');
+CALL register_session(2, 3, 1, 'credit_card');
+CALL register_session(2, 5, 1, 'credit_card');
+CALL register_session(3, 3, 1, 'credit_card');
+CALL register_session(3, 5, 1, 'credit_card');
+CALL register_session(8, 5, 1, 'credit_card');
+CALL register_session(8, 6, 1, 'credit_card');
+CALL register_session(6, 6, 1, 'credit_card');
+CALL register_session(6, 7, 1, 'credit_card');
+CALL register_session(5, 7, 1, 'course_package');
+CALL register_session(5, 8, 1, 'course_package');
+CALL register_session(7, 8, 1, 'course_package');
+CALL register_session(7, 9, 1, 'course_package');
+CALL register_session(4, 9, 1, 'course_package');
+CALL register_session(4, 10, 1, 'course_package');
+CALL register_session(9, 10, 1, 'course_package');
+CALL register_session(9, 2, 1, 'course_package');
+CALL register_session(10, 2, 1, 'course_package');
+CALL register_session(10, 3, 1, 'course_package');
