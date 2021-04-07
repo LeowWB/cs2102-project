@@ -380,6 +380,24 @@ create trigger sessions_end_by_six_t2
 before insert or update on Courses
 for each row execute function sessions_end_by_six_f2();
 
+-- The sessions for a course offering are numbered consecutively starting from 1 (we just check that it is  1 + max;
+
+create or replace function consecutive_session_id()
+returns trigger as $$
+    begin
+        if (select COALESCE(MAX(sid), 0) from Sessions where NEW.offering_id = offering_id) + 1 <> NEW.sid then
+            raise 'Session ids must be consecutive';
+            return NULL;
+        end if;
+        return NEW;
+    end;
+$$ language plpgsql;
+
+drop trigger if exists consecutive_session_id_t on Sessions;
+create trigger consecutive_session_id_t
+before insert or update on Sessions
+for each row execute function consecutive_session_id();
+
 -- Each room can be used to conduct at most one course session at any time.
 
 create or replace function one_session_per_room_at_a_time_f()
@@ -689,4 +707,3 @@ create trigger instructor_no_overlapping_sessions_t
 before insert or update on Sessions
 for each row execute function instructor_no_overlapping_sessions_f();
 
--- The sessions for a course offering are numbered consecutively starting from 1;
