@@ -669,29 +669,59 @@ CREATE OR REPLACE FUNCTION get_num_course_offerings(_eid int) RETURNS int as $$
 		AND extract(year FROM get_offering_end_date(O.offering_id)) = extract(year FROM now());
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION get_total_reg_fees_managed(IN eid int, OUT net_fees int, OUT title text) RETURNS record as $$
-BEGIN
-	WITH O AS (
-		SELECT *
+CREATE OR REPLACE FUNCTION get_total_reg_fees_managed(_eid int)
+RETURNS TABLE(net_fees int, title text) AS $$
+DECLARE
+	_offering_curs CURSOR FOR (
+		SELECT O.offering_id, O.fees, C.title
 		FROM Offerings O NATURAL JOIN Courses C JOIN Course_areas A ON C.area = A.name
 		WHERE A.manager = _eid
 			AND extract(year FROM get_offering_end_date(O.offering_id)) = extract(year FROM now())
-	)
-	SELECT sum(reg_fees) - sum(refund_fees) + sum(redeem_fees) AS net_fees, title
-	FROM (
-		SELECT fees * (
+	);
+	_r record;
+	_reg_fees int;
+	_redeem_fees int;
+	_refund_fees int;
+	_redeem_price int;
+	_count int;
+BEGIN
+	OPEN _offering_curs;
+	LOOP
+		FETCH _offering_curs INTO _r;
+		EXIT WHEN NOT FOUND;
+		_reg_fees := COALESCE(_r.fees * (
+			SELECT count(*) 
+			FROM Offerings O NATURAL JOIN Registers R
+			WHERE O.offering_id = _r.offering_id ), 0);
+		-- Calculated price of free redeemed session
+		_redeem_price := COALESCE( (
+			SELECT ((P.price / 100) / P.num_free_registrations) * 100 AS ref
+			FROM Offerings O NATURAL JOIN Redeems NATURAL JOIN Course_packages P
+			WHERE O.offering_id = _r.offering_id
+			LIMIT 1 ), 0);
+		-- Number of packages redeemed that were not cancelled
+		_count := COALESCE(
 			SELECT count(*)
-			FROM O NATURAL JOIN Registers
-		) AS reg_fees, (
-			SELECT sum(Cancels.refund_amt)
-			FROM O NATURAL JOIN Cancels
-		) AS refund_fees, (
-			-- Round down to nearest dollar by dividing by 100 first then * 100 after truncated division
-			SELECT sum(((P.price / 100) / P.num_free_registrations) * 100)
-			FROM O NATURAL JOIN Redeems NATURAL JOIN Course_packages P
-		) AS redeem_fees, O.title
-		FROM O
-	) as Fees;
+			FROM (
+				SELECT Red.offering_id
+				FROM Offerings NATURAL JOIN Redeems Red
+				WHERE Red.offering_id = _r.offering_id
+				EXCEPT ALL
+				SELECT C.offering_id
+				FROM Offerings NATURAL JOIN Cancels C
+				WHERE C.offering_id = _r.offering_id 
+				AND C.package_credit = 1 ), 0);
+		_redeem_fees := _redeem_price * _count;
+		-- Total amount refunded to customers that cancelled sessions for this offering
+		_refund_fees := COALESCE( (
+			SELECT sum(refund_amt)
+			FROM Offerings NATURAL JOIN Cancels C
+			WHERE C.offering_id = _r.offering_id ), 0);
+		net_fees := _reg_fees + _redeem_fees - _refund_fees;
+		title = _r.title;
+		RETURN NEXT;
+	END LOOP;
+	CLOSE _offering_curs;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1740,10 +1770,13 @@ DECLARE
 	_curs CURSOR FOR (
 		SELECT E.name, E.eid
 		FROM Managers NATURAL JOIN Employees E
+		ORDER BY E.name
 	);
 	_manager record;
-	_total_fees_record record;
 	_highest_reg_fees int;
+	_num_highest_reg_fees int;
+	_counter int;
+	_title text;
 BEGIN
 	_highest_reg_fees := 0;
 	OPEN _curs;
@@ -1753,13 +1786,41 @@ BEGIN
 		manager_name := _manager.name;
 		total_num_areas := get_num_course_areas(_manager.eid);
 		total_offerings := get_num_course_offerings(_manager.eid);
-		_total_fees_record := get_total_reg_fees_managed(_manager.eid);
-		total_reg_fees := _total_fees_record.net_fees;
-		IF _total_fees_record.net_fees > _highest_reg_fees THEN
-			highest_total_fees_offering := _total_fees_record.title;
-			_highest_reg_fees := _total_fees_record.net_fees;
-		ELSIF _total_fees_record.net_fees = _highest_reg_fees THEN
-			highest_total_fees_offering := highest_total_fees_offering || ', ' || _total_fees_record.title;
+		SELECT sum(net_fees), max(net_fees) INTO total_reg_fees, _highest_reg_fees
+		FROM get_total_reg_fees_managed(_manager.eid);
+		
+		IF total_reg_fees IS NULL THEN
+			-- Manager did not manage any offerings
+			total_reg_fees := 0;
+			highest_total_fees_offering := '';
+			CONTINUE;
+		END IF; 
+
+		SELECT count(*) INTO _num_highest_reg_fees
+		FROM get_total_reg_fees_managed(_manager.eid)
+		WHERE net_fees = _highest_reg_fees;
+
+		IF _num_highest_reg_fees > 1 THEN 
+			_counter := 0;
+			LOOP 
+				EXIT WHEN _counter = _num_highest_reg_fees;
+				SELECT title INTO _title
+				FROM get_total_reg_fees_managed(_manager.eid)
+				WHERE net_fees = _highest_reg_fees
+				OFFSET _counter
+				LIMIT 1;
+				IF _counter = 0 THEN
+					highest_total_fees_offering := _title;
+				ELSE 
+					highest_total_fees_offering := highest_total_fees_offering || ',' || _title;
+				END IF;	
+				_counter := _counter + 1;
+			END LOOP;
+		ELSE
+			SELECT title INTO highest_total_fees_offering
+			FROM get_total_reg_fees_managed(_manager.eid)
+			WHERE net_fees = _highest_reg_fees
+			LIMIT 1;
 		END IF;
 		RETURN NEXT;
 	END LOOP;
