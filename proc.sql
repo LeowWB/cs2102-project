@@ -333,6 +333,27 @@ RETURNS boolean AS $$
 	WHERE O.offering_id = _offering_id;
 $$ LANGUAGE sql;
 
+CREATE OR REPLACE FUNCTION offering_start_date(_offering_id int)
+RETURNS date AS $$
+	SELECT min(date)
+	FROM Sessions S
+	WHERE S.offering_id = _offering_id;
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION offering_start_time(_offering_id int)
+RETURNS int AS $$
+DECLARE
+	_session record;
+BEGIN
+	SELECT * INTO _session
+	FROM Sessions S
+	WHERE S.offering_id = _offering_id
+	ORDER BY S.date, S.start_time
+	LIMIT 1;
+	RETURN _session.start_time;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION get_most_recent_package(IN _cc_num varchar(19), OUT date timestamp, OUT package_id int, OUT num_remaining_redemptions int, OUT name text, OUT price int, OUT num_free_registrations int) 
 RETURNS record AS $$
 	SELECT B.date, B.package_id, B.num_remaining_redemptions, P.name, P.price, P.num_free_registrations
@@ -502,11 +523,11 @@ RETURNS TABLE(offering_id int, date date) AS $$
 BEGIN
 	-- Customers who did not register/redeem for an offering in last 6 months
 	RETURN QUERY
-	SELECT Reg.offering_id, Reg.date
+	SELECT Reg.offering_id, Reg.date::date
 	FROM Registers Reg
 	WHERE Reg.number = _cc_num
 	UNION
-	SELECT Red.offering_id, Red.date
+	SELECT Red.offering_id, Red.date::date
 	FROM Redeems Red
 	WHERE Red.number = _cc_num;
 END;
@@ -514,12 +535,15 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION get_interested_course_areas(_cust_id int) 
 RETURNS TABLE(area text) AS $$
+DECLARE
+	r record;
 BEGIN
+	r := get_latest_credit_card(_cust_id);
 	RETURN QUERY
 	SELECT C.area
 	FROM (
 		SELECT O.offering_id
-		FROM get_registered_and_redeemed_offerings(get_latest_credit_card(_cust_id)) O
+		FROM get_registered_and_redeemed_offerings(r.number) O
 		ORDER BY O.date desc
 		LIMIT 3
 	) as OfferingID NATURAL JOIN Offerings NATURAL JOIN Courses C;
@@ -581,37 +605,41 @@ RETURNS int AS $$
 	)
 	SELECT get_num_reg_offerings(CO.offering_id)
 	FROM CO
-	WHERE CO.launch_date >= ALL (
-		SELECT CO2.launch_date
+	WHERE offering_start_date(CO.offering_id) >= ALL (
+		SELECT offering_start_date(CO2.offering_id)
 		FROM CO CO2
 	);
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION get_popular_courses() 
-RETURNS TABLE(course_id int, course_title text, course_area text, num_offerings int, num_reg_latest_offering int) AS $$
+RETURNS TABLE(course_id int, num_offerings int, num_reg int) AS $$
 BEGIN
 	RETURN QUERY
 	-- Courses with >= 2 offerings this year
 	WITH C AS (
 		SELECT Co.course_id, Co.title, Co.area
 		FROM Courses Co NATURAL JOIN Offerings O
-		WHERE extract(year FROM O.launch_date) = extract(year FROM now())
+		WHERE extract(year FROM offering_start_date(O.offering_id)) = extract(year FROM now())
 		GROUP BY Co.course_id
 		HAVING count(*) >= 2 )
 	-- Courses whose later offerings have higher reg than earlier ones
-	SELECT course_id, course_title, course_area, count(*) AS num_offerings, num_reg_latest_offering(C2.course_id) AS num_reg
+	SELECT C2.course_id, count(*)::int AS num_offerings, num_reg_latest_offering(C2.course_id) AS num_reg
 	FROM (
 		SELECT C.course_id, C.title AS course_title, C.area AS course_area
 		FROM C
 		WHERE NOT EXISTS (
 			SELECT 1
 			FROM Offerings O1, Offerings O2
-			WHERE O1.launch_date > O2.launch_date
+			WHERE (offering_start_date(O1.offering_id) > offering_start_date(O2.offering_id)
+					OR ( offering_start_date(O1.offering_id) = offering_start_date(O2.offering_id) 
+						AND offering_start_time(O1.offering_id) < offering_start_time(O2.offering_id) ) )
 				AND C.course_id = O1.course_id
 				AND C.course_id = O2.course_id
+				AND extract(year FROM O1.launch_date) = extract(year FROM now())
+				AND extract(year FROM O2.launch_date) = extract(year FROM now())
 				AND get_num_reg_offerings(O1.offering_id) <= get_num_reg_offerings(O2.offering_id) )
 		) as C2 NATURAL JOIN Offerings O
-	WHERE extract(year FROM O.launch_date) = extract(year FROM now())
+	WHERE extract(year FROM offering_start_date(O.offering_id)) = extract(year FROM now())
 	GROUP BY C2.course_id;
 END;
 $$ LANGUAGE plpgsql;
@@ -1605,7 +1633,7 @@ BEGIN
 	SELECT extract(year FROM now()) INTO _curr_year;
 
 	RETURN QUERY
-	SELECT P.package_id, P.num_free_registrations, P.price, P.sale_start_date, P.sale_end_date, count(*) 
+	SELECT P.package_id, P.num_free_registrations, P.price, P.sale_start_date, P.sale_end_date, count(*)::int
 	FROM Buys B NATURAL JOIN Course_packages P
 	WHERE B.date >= make_date(_curr_year, 1, 1)
 	GROUP BY P.package_id
@@ -1660,8 +1688,8 @@ RETURNS TABLE(course_id int, course_title text, course_area text, num_offerings 
 BEGIN
 	-- Popular courses offered this year
 	RETURN QUERY
-	SELECT * 
-	FROM get_popular_courses() C
+	SELECT C.course_id, Co.title, Co.area, C.num_offerings, C.num_reg
+	FROM get_popular_courses() C NATURAL JOIN Courses Co
 	ORDER BY C.num_reg desc, C.course_id;
 END;
 $$ LANGUAGE plpgsql;
