@@ -390,7 +390,7 @@ BEGIN
 			_first_access := false;
 		END IF;
 		-- Add session info to array
-		_arr := array_append(_arr, ROW(_course_name, r.date, r.start_time));
+		_arr := array_append(_arr, (_course_name, r.date, r.start_time)::redeemed_session_info);
 	END LOOP;
 	CLOSE _curs;
 	RETURN _arr;

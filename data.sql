@@ -75,9 +75,10 @@ CALL add_course('CS5229', 'Advanced Computer Networks', 'networks', 4);
 
 BEGIN TRANSACTION; -- for offerings
 -- Try to get offerings that have past, ongoing, and available soon
-CALL add_course_offering(1, 1, 30000, 1000, '2020-1-1', '2020-4-1', 7, ARRAY[ ('2020-5-4', 9, 1), ('2020-5-4', 14, 2) ]::session_info[]);
+CALL add_course_offering(1, 1, 30000, 1000, '2021-1-1', '2021-2-1', 7, ARRAY[ ('2021-2-15', 9, 1), ('2021-2-17', 14, 2) ]::session_info[]);
 CALL add_course_offering(2, 1, 30000, 800, '2021-4-1', '2021-6-1', 7, ARRAY[ ('2021-7-5', 14, 1), ('2021-7-5', 16, 1) ]::session_info[]);
 CALL add_course_offering(3, 2, 25000, 700, '2021-2-1', '2021-6-1', 7, ARRAY[ ('2021-7-2', 10, 3), ('2021-7-6', 10, 3) ]::session_info[]);
+CALL add_course_offering(11, 2, 25000, 500, '2021-2-3', '2021-6-1', 7, ARRAY[ ('2021-7-5', 9, 4), ('2021-7-7', 14, 5) ]::session_info[]);
 CALL add_course_offering(4, 3, 40000, 500, '2021-6-1', '2021-8-1', 7, ARRAY[ ('2021-9-6', 15, 4), ('2021-9-7', 9, 4) ]::session_info[]);
 CALL add_course_offering(5, 5, 5000, 100, '2021-4-1', '2021-6-1', 7, ARRAY[ ('2021-6-11', 9, 5), ('2021-6-11', 10, 6) ]::session_info[]);
 CALL add_course_offering(6, 6, 6000, 200, '2021-4-1', '2021-6-1', 7, ARRAY[ ('2021-6-14', 10, 6), ('2021-6-15', 16, 7) ]::session_info[]);
