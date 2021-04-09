@@ -741,7 +741,7 @@ BEGIN
 		RAISE EXCEPTION 'Course areas must be empty for Administrators.';
 	END IF;
 	IF (_category = 'instructor' AND cardinality(_course_areas) = 0) THEN
-		RAISE EXCEPTION 'Course areas must not be empty for non-Administrators.';
+		RAISE EXCEPTION 'Course areas must not be empty for Instructors.';
 	END IF;
 	
 	_job_type := _category;
@@ -1303,7 +1303,8 @@ BEGIN
 	
 	RETURN QUERY
 	SELECT CS.title, CS.fees, CS.date, CS.start_time, CS.duration, E.name
-	FROM CourseOfferingSessions CS JOIN Employees E ON CS.instructor = E.eid
+	FROM CourseOfferingSessions CS 
+	JOIN Employees E ON CS.instructor = E.eid
 	WHERE (CS.date > CURRENT_DATE OR (CS.date = CURRENT_DATE AND CS.start_time + CS.duration > EXTRACT(HOUR FROM LOCALTIME))) 
 		AND is_registered_for_session(_cust_id, CS.offering_id, CS.sid);
 END;
