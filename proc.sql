@@ -472,7 +472,7 @@ BEGIN
 		AND extract(month from now()) = extract(month from T.date)
 	GROUP BY T.instructor;
 	
-	RETURN _hours;
+	RETURN COALESCE(_hours, 0);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -488,10 +488,6 @@ BEGIN
 	ELSE
 		-- salary_type is either "full_time" or "part_time"
 		_num_work_quantity := get_work_hours(_eid, _salary_type);
-		-- Part-time instructor did not teach any sessions this month
-		IF _num_work_quantity IS NULL THEN
-			RETURN 0;
-		END IF;
 		RETURN _hourly_rate * _num_work_quantity;
 	END IF;
 END;
@@ -1623,7 +1619,7 @@ BEGIN
 		EXIT WHEN NOT FOUND;
 
 		INSERT INTO Pay_slips(payment_date, amount, num_work_hours, num_work_days, eid)
-		VALUES(_curr_date, r.amount_paid, COALESCE(r.num_work_hours, 0), COALESCE(r.num_work_days, 0), r.eid);	
+		VALUES(_curr_date, r.amount_paid, r.num_work_hours, r.num_work_days, r.eid);
 
 		emp_id := r.eid;
 		emp_name := r.name;

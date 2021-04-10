@@ -262,8 +262,8 @@ create table Pay_slips
 (
     payment_date   date,
     amount         integer not null, --store in cents
-    num_work_hours integer not null,
-    num_work_days  integer not null,
+    num_work_hours integer,
+    num_work_days  integer,
     eid            integer,
     primary key (payment_date, eid),
     foreign key (eid) references Employees (eid),
