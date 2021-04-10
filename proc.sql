@@ -740,8 +740,8 @@ BEGIN
 	IF (_category = 'administrator' AND cardinality(_course_areas) > 0) THEN
 		RAISE EXCEPTION 'Course areas must be empty for Administrators.';
 	END IF;
-	IF ((_category = 'instructor' OR _category = 'manager') AND cardinality(_course_areas) = 0) THEN
-		RAISE EXCEPTION 'Course areas must not be empty for Instructors or Managers.';
+	IF (_category = 'instructor' AND cardinality(_course_areas) = 0) THEN
+		RAISE EXCEPTION 'Course areas must not be empty for Instructors.';
 	END IF;
 	
 	_job_type := _category;
