@@ -180,7 +180,7 @@ create table Courses
 drop table if exists Offerings cascade;
 create table Offerings
 (
-    offering_id	                integer unique,
+    offering_id	                integer primary key,
     course_id                   integer not null references Courses (course_id),
     launch_date                 date not null,
     fees                        integer not null
@@ -193,7 +193,7 @@ create table Offerings
     -- check target_n_r < seating capacity
     -- start and end date is derived
     -- check end date - deadline >= 10
-    primary key (course_id, launch_date)
+    unique (course_id, launch_date)
 );
 
 -- assume all sessions last exactly one hour.
