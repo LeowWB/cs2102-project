@@ -291,7 +291,7 @@ returns trigger as $$
         select count(*) into num_sessions
         from Sessions
         where offering_id = changed_offering_id;
-        if num_sessions = 1 then
+        if num_sessions = 0 then
             raise 'Each course offering must consist of one or more sessions';
         end if;
         if (tg_op = 'INSERT') then
@@ -309,8 +309,9 @@ DEFERRABLE INITIALLY DEFERRED
 for each row execute function each_offering_at_least_one_session_f();
 
 drop trigger if exists each_offering_at_least_one_session_t2 on Sessions;
-create trigger each_offering_at_least_one_session_t2
-before delete on Sessions
+create constraint trigger each_offering_at_least_one_session_t2
+after delete on Sessions
+DEFERRABLE INITIALLY DEFERRED
 for each row execute function each_offering_at_least_one_session_f();
 
 --each session is on a specific weekday (Monday to Friday)
