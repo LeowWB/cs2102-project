@@ -291,8 +291,8 @@ returns trigger as $$
         select count(*) into num_sessions
         from Sessions
         where offering_id = changed_offering_id;
-        if num_sessions = 0 then
-            raise 'Each course offering consists of one or more sessions';
+        if num_sessions = 1 then
+            raise 'Each course offering must consist of one or more sessions';
         end if;
         if (tg_op = 'INSERT') then
             return null;
