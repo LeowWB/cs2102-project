@@ -50,7 +50,7 @@ begin transaction; -- for employees
 -- Insert Managers first to insert Course Areas
 CALL add_employee('Dayna Schultz', '877 Arlene Coves Suite 434\nNew Wilson, MN 88696-8280', '97303635', 'katelin.dietrich@example.org', 'full_time', 250000, '2019-11-11', 'manager', ARRAY[ 'math', 'programming', 'algorithms' ]);
 CALL add_employee('Lorenz Walter V', '90722 Sienna Streets Suite 142\nWest Jerrod, DE 13419-1991', '95298596', 'fadel.hellen@example.org', 'full_time', 400000, '2011-11-06', 'manager', ARRAY[ 'databases', 'networks' ]);
-CALL add_employee('Cletus Jerde', '775 Martina Station Apt. 190\nSouth Elody, IN 35993-2103', '97233481', 'haylie15@example.com', 'full_time', 225000, '2020-1-11', 'manager', ARRAY[]::text[]);
+CALL add_employee('Cletus Jerde', '775 Martina Station Apt. 190\nSouth Elody, IN 35993-2103', '97233481', 'haylie15@example.com', 'full_time', 225000, '2020-1-11', 'manager', ARRAY['languages']::text[]);
 CALL add_employee('Madeline Parisian', '267 Kaylie Divide\nEstherstad, CA 46624-1390', '96836734', 'beverly20@example.org', 'part_time', 1200, '2015-08-22', 'instructor', ARRAY[ 'databases' ]);
 CALL add_employee('Sally Wolowitz', '320 Wall Street\nRhodes Island, RI 341390', '90807762', 'wollosally@hotmail.com', 'part_time', 1300, '2017-10-7', 'instructor', ARRAY[ 'networks' ]);
 CALL add_employee('Monserrate Kohler', '359 Jamir Square Apt. 048\nLake Zackery, NH 39502-1706', '96467215', 'blair.dach@example.org', 'full_time', 300000, '2003-04-30', 'instructor', ARRAY[ 'databases', 'math' ]);
