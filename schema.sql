@@ -335,7 +335,7 @@ for each row execute function sessions_on_weekdays_f();
 
 -- session mustn't end after 6
 
-create or replace function sessions_end_by_six_f1()
+create or replace function sessions_end_by_18_and_not_during_12_14_f1()
 returns trigger as $$
     declare
         dur integer;
@@ -343,42 +343,43 @@ returns trigger as $$
     begin
         select duration into dur
         from (Sessions natural join Offerings) natural join Courses
-        where sid = NEW.sid and offering_id = NEW.offering_id;
+        where offering_id = NEW.offering_id;
         endtime := NEW.start_time + dur;
         if endtime > 18 then
             raise 'Session should not end after 6pm';
-            return NULL;
+        end if;
+        if NEW.start_time < 14 and endtime > 12 then
+            raise 'Session cannot take place during 12-2pm';
         end if;
         return NEW;
     end;
 $$ language plpgsql;
 
-drop trigger if exists sessions_end_by_six_t1 on Sessions;
-create trigger sessions_end_by_six_t1
+drop trigger if exists sessions_end_by_18_and_not_during_12_14_t1 on Sessions;
+create trigger sessions_end_by_18_and_not_during_12_14_t1
 before insert or update on Sessions
-for each row execute function sessions_end_by_six_f1();
+for each row execute function sessions_end_by_18_and_not_during_12_14_f1();
 
-create or replace function sessions_end_by_six_f2()
+create or replace function sessions_end_by_18_and_not_during_12_14_f2()
 returns trigger as $$
     declare
-        num_sessions_ending_after_six integer;
+        num_violated_sessions integer;
     begin
-        select count(*) into num_sessions_ending_after_six
+        select count(*) into num_violated_sessions
         from (Courses natural join Offerings) natural join Sessions
-        where (course_id = NEW.course_id and start_time + NEW.duration > 18);
+        where course_id = NEW.course_id and (start_time + NEW.duration > 18 or (start_time < 14 and start_time + NEW.duration >= 12));
         
-        if num_sessions_ending_after_six > 0 then
-            raise 'Session should not end after 6pm';
-            return NULL;
+        if num_violated_sessions > 0 then
+            raise 'Session should not end after 6pm or take place during 12-2pm';
         end if;
         return NEW;
     end;
 $$ language plpgsql;
 
-drop trigger if exists sessions_end_by_six_t2 on Courses;
-create trigger sessions_end_by_six_t2
+drop trigger if exists sessions_end_by_18_and_not_during_12_14_t2 on Courses;
+create trigger sessions_end_by_18_and_not_during_12_14_t2
 before insert or update on Courses
-for each row execute function sessions_end_by_six_f2();
+for each row execute function sessions_end_by_18_and_not_during_12_14_f2();
 
 -- The sessions for a course offering are numbered consecutively starting from 1 (we just check that it is  1 + max;
 
@@ -387,7 +388,6 @@ returns trigger as $$
     begin
         if (select COALESCE(MAX(sid), 0) from Sessions where NEW.offering_id = offering_id) + 1 <> NEW.sid then
             raise 'Session ids must be consecutive';
-            return NULL;
         end if;
         return NEW;
     end;
@@ -395,7 +395,7 @@ $$ language plpgsql;
 
 drop trigger if exists consecutive_session_id_t on Sessions;
 create trigger consecutive_session_id_t
-before insert or update on Sessions
+before insert on Sessions
 for each row execute function consecutive_session_id();
 
 -- Each room can be used to conduct at most one course session at any time.
