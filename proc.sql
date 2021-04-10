@@ -701,7 +701,7 @@ BEGIN
 			LIMIT 1 ), 0);
 		-- Number of packages redeemed that were not cancelled
 		_count := COALESCE(
-			SELECT count(*)
+			(SELECT count(*)
 			FROM (
 				SELECT Red.offering_id
 				FROM Offerings NATURAL JOIN Redeems Red
@@ -710,7 +710,7 @@ BEGIN
 				SELECT C.offering_id
 				FROM Offerings NATURAL JOIN Cancels C
 				WHERE C.offering_id = _r.offering_id 
-				AND C.package_credit = 1 ), 0);
+				AND C.package_credit = 1 ) as unused), 0);
 		_redeem_fees := _redeem_price * _count;
 		-- Total amount refunded to customers that cancelled sessions for this offering
 		_refund_fees := COALESCE( (
@@ -1794,7 +1794,8 @@ BEGIN
 			-- Manager did not manage any offerings
 			total_reg_fees := 0;
 			highest_total_fees_offering := '';
-			CONTINUE;
+			RETURN NEXT;
+			continue;
 		END IF; 
 
 		SELECT count(*) INTO _num_highest_reg_fees
